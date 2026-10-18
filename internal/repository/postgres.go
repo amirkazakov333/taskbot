@@ -9,7 +9,14 @@ import (
 )
 
 func NewPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
-	connectionString := fmt.Sprintf("postgres://$1:$2@$3/$4", cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName)
+	connectionString := fmt.Sprintf(
+		"postgres://%s:%s@%s:%d/%s",
+		cfg.DBUser,
+		cfg.DBPassword,
+		cfg.DBHost,
+		cfg.DBPort,
+		cfg.DBName,
+	)
 
 	pool, err := pgxpool.New(ctx, connectionString)
 	if err != nil {

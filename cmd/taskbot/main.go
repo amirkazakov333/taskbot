@@ -32,9 +32,10 @@ func main() {
 
 	log.Println("PostgreSQL connection successful")
 
-	repository := repository.NewUserPostgresRepository(pool)
+	registrationSessionRepository := repository.NewRegistrationSessionPostgresRepository(pool)
+	usersRepository := repository.NewUserPostgresRepository(pool)
 
-	service := service.NewUserService(repository)
+	service := service.NewUserService(usersRepository, registrationSessionRepository)
 
 	handler := handler.NewUserHandler(*service)
 
@@ -48,6 +49,13 @@ func main() {
 		"/start",
 		tgbot.MatchTypeExact,
 		handler.StartHandler,
+	)
+
+	tgBot.RegisterHandler(
+		tgbot.HandlerTypeMessageText,
+		"",
+		tgbot.MatchTypePrefix,
+		handler.Message,
 	)
 
 	log.Println("Telegram-бот запущен")

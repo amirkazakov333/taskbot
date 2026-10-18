@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+
 	"telegram-bot/internal/model"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -9,6 +10,7 @@ import (
 
 type UserRepository interface {
 	GetByTelegramID(ctx context.Context, telegramID int64) (*model.User, error)
+	UserCreate(ctx context.Context, user model.User) error
 }
 
 type UserPostgresRepository struct {
@@ -21,18 +23,20 @@ func NewUserPostgresRepository(pool *pgxpool.Pool) *UserPostgresRepository {
 	}
 }
 
-func (r UserPostgresRepository) GetByTelegramID(ctx context.Context, telegramID int64) (*model.User, error) {
+func (r *UserPostgresRepository) GetByTelegramID(ctx context.Context, telegramID int64) (*model.User, error) {
 	var user model.User
 
 	query := `
 		SELECT id, telegram_id, username, first_name, last_name, preferred_name
 		FROM users
-		WHERE telegram_id = $1`
+		WHERE telegram_id = $1
+	`
 
 	err := r.pool.QueryRow(
 		ctx,
 		query,
-		telegramID).Scan(
+		telegramID,
+	).Scan(
 		&user.ID,
 		&user.TelegramID,
 		&user.Username,
@@ -40,10 +44,34 @@ func (r UserPostgresRepository) GetByTelegramID(ctx context.Context, telegramID 
 		&user.LastName,
 		&user.PreferredName,
 	)
-
 	if err != nil {
 		return nil, err
 	}
 
 	return &user, nil
+}
+
+func (r *UserPostgresRepository) UserCreate(ctx context.Context, user model.User) error {
+	query := `
+		INSERT INTO users (
+			telegram_id,
+			username,
+			first_name,
+			last_name,
+			preferred_name
+		)
+		VALUES ($1, $2, $3, $4, $5)
+	`
+
+	_, err := r.pool.Exec(
+		ctx,
+		query,
+		user.TelegramID,
+		user.Username,
+		user.FirstName,
+		user.LastName,
+		user.PreferredName,
+	)
+
+	return err
 }

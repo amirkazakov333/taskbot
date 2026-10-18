@@ -6,6 +6,7 @@ import (
 	"telegram-bot/internal/config"
 	"telegram-bot/internal/handler"
 	"telegram-bot/internal/repository"
+	"telegram-bot/internal/service"
 	"time"
 
 	tgbot "github.com/go-telegram/bot"
@@ -30,6 +31,12 @@ func main() {
 	defer pool.Close()
 
 	log.Println("PostgreSQL connection successful")
+
+	repository := repository.NewUserPostgresRepository(pool)
+
+	service := service.NewUserService(repository)
+
+	handler := handler.NewUserHandler(*service)
 
 	tgBot, err := tgbot.New(cfg.TelegramBotToken)
 	if err != nil {

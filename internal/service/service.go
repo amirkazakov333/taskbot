@@ -236,8 +236,7 @@ func registrationPrompt(step string) string {
 
 	case "await_custom_preferred_name":
 		return "<b>✨ Твоё имя для TaskBot</b>\n\n" +
-			"Напиши, как тебе будет приятнее, чтобы я к тебе обращался.\n\n" +
-			"<i>Например: Амирчик</i>"
+			"Напиши, как тебе будет приятнее, чтобы я к тебе обращался.\n\n"
 
 	default:
 		return "⚠️ Не удалось определить этап регистрации. Напиши /start."

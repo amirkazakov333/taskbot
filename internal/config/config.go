@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 
@@ -17,10 +18,14 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	port, _ := strconv.Atoi(os.Getenv("DB_PORT"))
 	err := godotenv.Load(".env")
 	if err != nil {
 		return nil, err
+	}
+
+	port, err := strconv.Atoi(os.Getenv("DB_PORT"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid DB_PORT: %w", err)
 	}
 
 	return &Config{

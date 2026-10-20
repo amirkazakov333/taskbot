@@ -14,6 +14,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const (
+	stepAwaitFirstName     = "await_first_name"
+	stepAwaitLastName      = "await_last_name"
+	stepAwaitPreferredName = "await_preferred_name"
+)
+
 type UserService struct {
 	users                repository.UserRepository
 	registrationSessions repository.RegistrationSessionRepository
@@ -26,26 +32,31 @@ func NewUserService(users repository.UserRepository, registrationSessions reposi
 	}
 }
 
-func (s UserService) Start(ctx context.Context, update *models.Update) (string, error) {
+func (s *UserService) Start(ctx context.Context, update *models.Update) (*model.BotResponse, error) {
 	telegramID := update.Message.From.ID
 
+	// 1. Проверяем, зарегистрирован ли пользователь
 	user, err := s.users.GetByTelegramID(ctx, telegramID)
 
 	if err == nil {
-		return fmt.Sprintf(
-			"<b>👋 С возвращением, %s!</b>\n\n"+
-				"📋 <b>TaskBot</b> — твой помощник по задачам.\n\n"+
-				"Планируй дела, контролируй прогресс "+
-				"и не забывай о важных задачах.\n\n"+
-				"Выбери действие ниже 👇",
-			html.EscapeString(user.PreferredName),
-		), nil
+		return &model.BotResponse{
+			Text: fmt.Sprintf(
+				"<b>👋 С возвращением, %s!</b>\n\n"+
+					"📋 <b>TaskBot</b> — твой помощник по задачам.\n\n"+
+					"Планируй дела, контролируй прогресс "+
+					"и не забывай о важных задачах.\n\n"+
+					"Выбери действие ниже 👇",
+				html.EscapeString(user.PreferredName),
+			),
+			Menu: model.MenuMain,
+		}, nil
 	}
 
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return "", err
+		return nil, err
 	}
 
+	// 2. Проверяем, есть ли незавершённая регистрация
 	session, err := s.registrationSessions.GetByTelegramID(
 		ctx,
 		telegramID,
@@ -53,33 +64,29 @@ func (s UserService) Start(ctx context.Context, update *models.Update) (string, 
 
 	if err == nil {
 		switch session.CurrentStep {
-		case "await_first_name":
-			return "<b>📝 Давай познакомимся!</b>\n\n" +
-				"Привет! Чтобы начать, напиши своё <b>имя</b>. 👋\n\n" +
-				"<code>Шаг 1 из 3</code>", nil
-		case "await_last_name":
-			return "<b>✅ Имя сохранено!</b>\n\n" +
-				"<b>📋 Шаг 2 из 3 · Фамилия</b>\n\n" +
-				"Теперь напиши свою <b>фамилию</b>.\n\n", nil
-		case "await_preferred_name":
-			return "<b>✅ Основные данные почти готовы!</b>\n\n" +
-				"<b>💬 Шаг 3 из 3 · Как к тебе обращаться?</b>\n\n" +
-				"Выбери, как мне называть тебя. 😊\n\n" +
-				"👤 По имени\n" +
-				"📋 По фамилии\n" +
-				"✨ Другое имя", nil
-		case "await_custom_preferred_name":
-			return "<b>✨ Придумай своё обращение</b>\n\n" +
-				"Напиши, как тебе будет приятнее, чтобы я к тебе обращался.\n\n", nil
+
+		case stepAwaitFirstName,
+			stepAwaitLastName,
+			stepAwaitPreferredName:
+
+			return &model.BotResponse{
+				Text: registrationPrompt(session.CurrentStep),
+				Menu: model.MenuNone,
+			}, nil
+
 		default:
-			return "", fmt.Errorf("unknown registration step: %q", session.CurrentStep)
+			return nil, fmt.Errorf(
+				"unknown registration step: %q",
+				session.CurrentStep,
+			)
 		}
 	}
 
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return "", err
+		return nil, err
 	}
 
+	// 3. Новый пользователь — создаём registration session
 	var username *string
 
 	if name := update.Message.From.Username; name != "" {
@@ -89,108 +96,132 @@ func (s UserService) Start(ctx context.Context, update *models.Update) (string, 
 	newSession := model.RegistrationSession{
 		TelegramID:  telegramID,
 		Username:    username,
-		CurrentStep: "await_first_name",
+		CurrentStep: stepAwaitFirstName,
 	}
 
-	if err := s.registrationSessions.RegisterCreate(ctx, newSession); err != nil {
-		return "", err
+	if err := s.registrationSessions.RegisterCreate(
+		ctx,
+		newSession,
+	); err != nil {
+		return nil, err
 	}
 
-	return "<b>👋 Привет!</b>\n\n" +
-		"Добро пожаловать в <b>TaskBot</b> — твоего личного помощника по задачам! 📋\n\n" +
-		"Я помогу тебе планировать дела, следить за их выполнением " +
-		"и вовремя получать напоминания. ⏰\n\n" +
-		"📝 <b>Давай познакомимся!</b>\n\n" +
-		"Для начала регистрации напиши своё имя.", nil
+	return &model.BotResponse{
+		Text: "<b>👋 Привет!</b>\n\n" +
+			"Добро пожаловать в <b>TaskBot</b> — твоего личного помощника по задачам! 📋\n\n" +
+			"Я помогу тебе планировать дела, следить за их выполнением " +
+			"и вовремя получать напоминания. ⏰\n\n" +
+			"📝 <b>Давай познакомимся!</b>\n\n" +
+			"Для начала регистрации напиши своё имя.",
+		Menu: model.MenuNone,
+	}, nil
 }
 
-func (s *UserService) HandleMessage(ctx context.Context, telegramID int64, text string) (string, error) {
+func (s *UserService) HandleMessage(ctx context.Context, telegramID int64, text string) (*model.BotResponse, error) {
+	// 1. Проверяем, зарегистрирован ли пользователь
 	_, err := s.users.GetByTelegramID(ctx, telegramID)
 
 	if err == nil {
-		return "", nil
+		// Пока обработку кнопок главного меню ещё не сделали.
+		return &model.BotResponse{
+			Text: "Выбери нужное действие 👇",
+			Menu: model.MenuMain,
+		}, nil
 	}
 
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return "", err
+		return nil, err
 	}
 
-	session, err := s.registrationSessions.GetByTelegramID(ctx, telegramID)
+	// 2. Получаем текущую registration session
+	session, err := s.registrationSessions.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
+		return &model.BotResponse{
+			Text: "Для начала работы напиши /start.",
+			Menu: model.MenuNone,
+		}, nil
 	}
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	text = strings.TrimSpace(text)
 
+	// Пустое сообщение или команда во время регистрации
 	if text == "" || strings.HasPrefix(text, "/") {
-		return registrationPrompt(session.CurrentStep), nil
+		return &model.BotResponse{
+			Text: registrationPrompt(session.CurrentStep),
+			Menu: model.MenuNone,
+		}, nil
 	}
 
+	// 3. Обрабатываем текущий этап регистрации
 	switch session.CurrentStep {
-	case "await_first_name":
+
+	case stepAwaitFirstName:
+
 		session.FirstName = text
-		session.CurrentStep = "await_last_name"
+		session.CurrentStep = stepAwaitLastName
 
-		if err := s.registrationSessions.Update(ctx, *session); err != nil {
-			return "", err
+		if err := s.registrationSessions.Update(
+			ctx,
+			*session,
+		); err != nil {
+			return nil, err
 		}
 
-		return "<b>✅ Имя сохранено!</b>\n\n" +
-			"<b>📋 Шаг 2 из 3 · Фамилия</b>\n\n" +
-			"Теперь напиши свою <b>фамилию</b>.\n\n", nil
+		return &model.BotResponse{
+			Text: registrationPrompt(session.CurrentStep),
+			Menu: model.MenuNone,
+		}, nil
 
-	case "await_last_name":
+	case stepAwaitLastName:
+
 		session.LastName = text
-		session.CurrentStep = "await_preferred_name"
+		session.CurrentStep = stepAwaitPreferredName
 
-		if err := s.registrationSessions.Update(ctx, *session); err != nil {
-			return "", err
+		if err := s.registrationSessions.Update(
+			ctx,
+			*session,
+		); err != nil {
+			return nil, err
 		}
 
-		return registrationPrompt(session.CurrentStep), nil
+		return &model.BotResponse{
+			Text: registrationPrompt(session.CurrentStep),
+			Menu: model.MenuNone,
+		}, nil
 
-	case "await_preferred_name":
+	case stepAwaitPreferredName:
+
 		switch strings.ToLower(text) {
+
 		case "по имени":
 			session.PreferredName = session.FirstName
-			return s.completeRegistration(ctx, session)
+
 		case "по фамилии":
 			session.PreferredName = session.LastName
-			return s.completeRegistration(ctx, session)
-		case "другое имя":
-			session.CurrentStep = "await_custom_preferred_name"
-
-			if err := s.registrationSessions.Update(ctx, *session); err != nil {
-				return "", err
-			}
-
-			return registrationPrompt(session.CurrentStep), nil
 
 		default:
-			return "Пожалуйста, выбери один из вариантов:\n\n" +
-				"• По имени\n" +
-				"• По фамилии\n" +
-				"• Другое имя", nil
+			session.PreferredName = text
 		}
 
-	case "await_custom_preferred_name":
-		session.PreferredName = text
 		return s.completeRegistration(ctx, session)
 
 	default:
-		return "", fmt.Errorf(
+		return nil, fmt.Errorf(
 			"unknown registration step: %q",
 			session.CurrentStep,
 		)
 	}
 }
 
-func (s *UserService) completeRegistration(ctx context.Context, session *model.RegistrationSession) (string, error) {
+func (s *UserService) completeRegistration(ctx context.Context, session *model.RegistrationSession) (*model.BotResponse, error) {
 	user := model.User{
 		TelegramID:    session.TelegramID,
 		Username:      session.Username,
@@ -200,43 +231,45 @@ func (s *UserService) completeRegistration(ctx context.Context, session *model.R
 	}
 
 	if err := s.users.UserCreate(ctx, user); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	if err := s.registrationSessions.Delete(ctx, session.TelegramID); err != nil {
-		return "", err
+	if err := s.registrationSessions.Delete(
+		ctx,
+		session.TelegramID,
+	); err != nil {
+		return nil, err
 	}
 
-	return fmt.Sprintf(
-		"<b>🎉 Регистрация завершена!</b>\n\n"+
-			"Приятно познакомиться, %s! 😊\n\n"+
-			"<b>TaskBot</b> готов помогать тебе с задачами. 📋",
-		html.EscapeString(user.PreferredName),
-	), nil
+	return &model.BotResponse{
+		Text: fmt.Sprintf(
+			"<b>🎉 Регистрация завершена!</b>\n\n"+
+				"Приятно познакомиться, %s! 😊\n\n"+
+				"<b>TaskBot</b> готов помогать тебе с задачами. 📋\n\n"+
+				"Выбери действие ниже 👇",
+			html.EscapeString(user.PreferredName),
+		),
+		Menu: model.MenuMain,
+	}, nil
 }
 
 func registrationPrompt(step string) string {
 	switch step {
-	case "await_first_name":
+
+	case stepAwaitFirstName:
 		return "<b>📝 Шаг 1 из 3 · Имя</b>\n\n" +
-			"Напиши своё имя. 👋\n\n" +
-			"<i>Например: Амир</i>"
+			"Напиши своё имя. 👋"
 
-	case "await_last_name":
+	case stepAwaitLastName:
 		return "<b>📋 Шаг 2 из 3 · Фамилия</b>\n\n" +
-			"Напиши свою фамилию.\n\n" +
-			"<i>Например: Каримов</i>"
+			"Напиши свою фамилию."
 
-	case "await_preferred_name":
+	case stepAwaitPreferredName:
 		return "<b>💬 Шаг 3 из 3 · Как к тебе обращаться?</b>\n\n" +
-			"Выбери один вариант и отправь его сообщением:\n\n" +
-			"👤 По имени\n" +
-			"📋 По фамилии\n" +
-			"✨ Другое имя"
-
-	case "await_custom_preferred_name":
-		return "<b>✨ Твоё имя для TaskBot</b>\n\n" +
-			"Напиши, как тебе будет приятнее, чтобы я к тебе обращался.\n\n"
+			"Напиши:\n\n" +
+			"👤 <b>По имени</b>\n" +
+			"📋 <b>По фамилии</b>\n\n" +
+			"Или просто введи своё обращение ✨"
 
 	default:
 		return "⚠️ Не удалось определить этап регистрации. Напиши /start."

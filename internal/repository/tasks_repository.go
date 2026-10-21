@@ -16,13 +16,19 @@ type TaskPostgresRepository struct {
 	pool *pgxpool.Pool
 }
 
-func NewTaskPostgresRepository(pool *pgxpool.Pool) *TaskPostgresRepository {
+func NewTaskPostgresRepository(
+	pool *pgxpool.Pool,
+) *TaskPostgresRepository {
 	return &TaskPostgresRepository{
 		pool: pool,
 	}
 }
 
-func (r *TaskPostgresRepository) Create(ctx context.Context, task *model.Task) error {
+func (r *TaskPostgresRepository) Create(
+	ctx context.Context,
+	task *model.Task,
+) error {
+
 	query := `
 		INSERT INTO tasks (
 			user_id,
@@ -32,7 +38,10 @@ func (r *TaskPostgresRepository) Create(ctx context.Context, task *model.Task) e
 			due_at
 		)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, created_at, updated_at
+		RETURNING
+			id,
+			created_at,
+			updated_at
 	`
 
 	err := r.pool.QueryRow(

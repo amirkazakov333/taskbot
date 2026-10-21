@@ -66,7 +66,7 @@ func (h *UserHandler) Message(
 		return
 	}
 
-	response, err := h.userService.HandleMessage(
+	response, err := h.userService.HandleStartMessage(
 		ctx,
 		update.Message.From.ID,
 		update.Message.Text,

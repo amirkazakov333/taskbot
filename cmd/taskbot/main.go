@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"log"
+	"time"
+
 	"telegram-bot/internal/config"
 	"telegram-bot/internal/handler"
 	"telegram-bot/internal/repository"
 	"telegram-bot/internal/service"
-	"time"
 
 	tgbot "github.com/go-telegram/bot"
 )
@@ -18,6 +19,7 @@ func main() {
 		log.Fatalf("Config error: %v", err)
 	}
 
+	// Контекст только для первоначального подключения к PostgreSQL
 	ctx, cancel := context.WithTimeout(
 		context.Background(),
 		5*time.Second,
@@ -32,32 +34,84 @@ func main() {
 
 	log.Println("PostgreSQL connection successful")
 
-	registrationSessionRepository := repository.NewRegistrationSessionPostgresRepository(pool)
-	usersRepository := repository.NewUserPostgresRepository(pool)
+	// =========================
+	// Repositories
+	// =========================
 
-	service := service.NewUserService(usersRepository, registrationSessionRepository)
+	usersRepository :=
+		repository.NewUserPostgresRepository(pool)
 
-	handler := handler.NewUserHandler(*service)
+	registrationSessionRepository :=
+		repository.NewRegistrationSessionPostgresRepository(pool)
+
+	taskRegistrationRepository :=
+		repository.NewTaskRegistrationPostgresRepository(pool)
+
+	taskRepository :=
+		repository.NewTaskPostgresRepository(pool)
+
+	// =========================
+	// Services
+	// =========================
+
+	userService := service.NewUserService(
+		usersRepository,
+		registrationSessionRepository,
+	)
+
+	taskService := service.NewTaskService(
+		usersRepository,
+		taskRepository,
+		taskRegistrationRepository,
+	)
+
+	// =========================
+	// Handlers
+	// =========================
+
+	userHandler := handler.NewUserHandler(
+		*userService,
+	)
+
+	taskHandler := handler.NewTaskHandler(
+		taskService,
+	)
+
+	messageRouter := handler.NewMessageRouter(
+		userHandler,
+		taskHandler,
+		taskService,
+	)
+
+	// =========================
+	// Telegram Bot
+	// =========================
 
 	tgBot, err := tgbot.New(cfg.TelegramBotToken)
 	if err != nil {
-		log.Fatalf("не удалось создать Telegram-бота: %v", err)
+		log.Fatalf(
+			"не удалось создать Telegram-бота: %v",
+			err,
+		)
 	}
 
+	// /start обрабатывается UserHandler
 	tgBot.RegisterHandler(
 		tgbot.HandlerTypeMessageText,
 		"/start",
 		tgbot.MatchTypeExact,
-		handler.StartHandler,
+		userHandler.StartHandler,
 	)
 
+	// Все остальные сообщения идут через Router
 	tgBot.RegisterHandler(
 		tgbot.HandlerTypeMessageText,
 		"",
 		tgbot.MatchTypePrefix,
-		handler.Message,
+		messageRouter.Message,
 	)
 
 	log.Println("Telegram-бот запущен")
+
 	tgBot.Start(context.Background())
 }

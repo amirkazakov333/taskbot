@@ -117,7 +117,7 @@ func (s *UserService) Start(ctx context.Context, update *models.Update) (*model.
 	}, nil
 }
 
-func (s *UserService) HandleMessage(ctx context.Context, telegramID int64, text string) (*model.BotResponse, error) {
+func (s *UserService) HandleStartMessage(ctx context.Context, telegramID int64, text string) (*model.BotResponse, error) {
 	// 1. Проверяем, зарегистрирован ли пользователь
 	_, err := s.users.GetByTelegramID(ctx, telegramID)
 

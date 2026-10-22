@@ -36,6 +36,22 @@ func NewTaskService(users repository.UserRepository, tasks repository.TaskReposi
 }
 
 func (s *TaskService) StartCreateTask(ctx context.Context, telegramID int64) (*model.BotResponse, error) {
+	_, err := s.users.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return &model.BotResponse{
+			Text: "Сначала необходимо зарегистрироваться. Отправь /start.",
+			Menu: model.MenuNone,
+		}, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
 	session, err := s.registrationTasks.GetByTelegramID(
 		ctx,
 		telegramID,

@@ -47,7 +47,7 @@ func (s *ReminderService) GetReminders(
 	}
 
 	for _, task := range preTasks {
-
+		dueAt := task.DueAt.In(appLocation())
 		category := reminderCategory(task.Category)
 
 		messages = append(
@@ -63,7 +63,7 @@ func (s *ReminderService) GetReminders(
 						"🕐 Через 30 минут — %s",
 					category,
 					task.Title,
-					task.DueAt.Format("15:04"),
+					dueAt.Format("15:04"),
 				),
 			},
 		)
@@ -85,7 +85,7 @@ func (s *ReminderService) GetReminders(
 		}
 
 		for _, task := range overdueTasks {
-
+			dueAt := task.DueAt.In(appLocation())
 			category := reminderCategory(task.Category)
 
 			messages = append(
@@ -101,7 +101,7 @@ func (s *ReminderService) GetReminders(
 							"🕐 Срок был: %s",
 						category,
 						task.Title,
-						task.DueAt.Format("15:04"),
+						dueAt.Format("15:04"),
 					),
 				},
 			)
@@ -123,7 +123,7 @@ func (s *ReminderService) GetReminders(
 	}
 
 	for _, task := range dueTasks {
-
+		dueAt := task.DueAt.In(appLocation())
 		category := reminderCategory(task.Category)
 
 		messages = append(
@@ -139,7 +139,7 @@ func (s *ReminderService) GetReminders(
 						"🕐 %s",
 					category,
 					task.Title,
-					task.DueAt.Format("15:04"),
+					dueAt.Format("15:04"),
 				),
 			},
 		)

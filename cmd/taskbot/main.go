@@ -7,6 +7,7 @@ import (
 
 	"telegram-bot/internal/config"
 	"telegram-bot/internal/handler"
+	"telegram-bot/internal/reminder"
 	"telegram-bot/internal/repository"
 	"telegram-bot/internal/service"
 
@@ -45,6 +46,9 @@ func main() {
 	taskRepository :=
 		repository.NewTaskPostgresRepository(pool)
 
+	reminderRepository :=
+		repository.NewReminderPostgresRepository(pool)
+
 	userService := service.NewUserService(
 		usersRepository,
 		registrationSessionRepository,
@@ -55,6 +59,11 @@ func main() {
 		taskRepository,
 		taskRegistrationRepository,
 	)
+
+	reminderService :=
+		service.NewReminderService(
+			reminderRepository,
+		)
 
 	userHandler := handler.NewUserHandler(
 		*userService,
@@ -78,6 +87,12 @@ func main() {
 		)
 	}
 
+	reminderWorker :=
+		reminder.NewWorker(
+			reminderService,
+			tgBot,
+		)
+
 	// /start обрабатывается UserHandler
 	tgBot.RegisterHandler(
 		tgbot.HandlerTypeMessageText,
@@ -93,6 +108,14 @@ func main() {
 		tgbot.MatchTypePrefix,
 		messageRouter.Message,
 	)
+
+	appCtx, appCancel :=
+		context.WithCancel(
+			context.Background(),
+		)
+	defer appCancel()
+
+	go reminderWorker.Start(appCtx)
 
 	log.Println("Telegram-бот запущен")
 

@@ -28,6 +28,12 @@ const (
 	TaskStatusDone TaskStatus = "done"
 )
 
+const (
+	ReminderTypePre     ReminderType = "pre"
+	ReminderTypeDue     ReminderType = "due"
+	ReminderTypeOverdue ReminderType = "overdue"
+)
+
 type BotResponse struct {
 	Text string
 	Menu MenuType
@@ -76,4 +82,25 @@ type TaskCreationSession struct {
 	CurrentStep string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type TaskReminder struct {
+	TaskID     int64
+	TelegramID int64
+	Title      string
+	DueAt      time.Time
+
+	PreReminderSent bool
+	DueReminderSent bool
+
+	LastOverdueReminderAt *time.Time
+}
+
+type ReminderType string
+
+type ReminderMessage struct {
+	TaskID     int64
+	TelegramID int64
+	Type       ReminderType
+	Text       string
 }

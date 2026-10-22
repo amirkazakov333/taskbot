@@ -322,19 +322,38 @@ func taskDateMenu() *models.ReplyKeyboardMarkup {
 	}
 }
 
-func taskTimeMenu(fromCurrentTime bool) *models.ReplyKeyboardMarkup {
+func taskTimeMenu(
+	fromCurrentTime bool,
+) *models.ReplyKeyboardMarkup {
+
 	var keyboard [][]models.KeyboardButton
 	var row []models.KeyboardButton
 
 	startMinutes := 7 * 60
 
 	if fromCurrentTime {
-		now := time.Now()
 
-		currentMinutes := now.Hour()*60 + now.Minute()
+		location, err := time.LoadLocation("Asia/Dushanbe")
+		if err != nil {
+			location = time.FixedZone(
+				"UTC+5",
+				5*60*60,
+			)
+		}
 
-		startMinutes = (currentMinutes/30 + 1) * 30
+		now := time.Now().In(location)
 
+		currentMinutes :=
+			now.Hour()*60 + now.Minute()
+
+		// Берём следующий 30-минутный интервал.
+		// 12:00 -> 12:30
+		// 12:10 -> 12:30
+		// 12:30 -> 13:00
+		startMinutes =
+			(currentMinutes/30 + 1) * 30
+
+		// Раньше 07:00 задачи создавать нельзя
 		if startMinutes < 7*60 {
 			startMinutes = 7 * 60
 		}
@@ -359,13 +378,20 @@ func taskTimeMenu(fromCurrentTime bool) *models.ReplyKeyboardMarkup {
 		)
 
 		if len(row) == 4 {
-			keyboard = append(keyboard, row)
+			keyboard = append(
+				keyboard,
+				row,
+			)
+
 			row = nil
 		}
 	}
 
 	if len(row) > 0 {
-		keyboard = append(keyboard, row)
+		keyboard = append(
+			keyboard,
+			row,
+		)
 	}
 
 	return &models.ReplyKeyboardMarkup{

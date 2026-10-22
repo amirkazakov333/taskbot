@@ -362,17 +362,22 @@ func (s *TaskService) handleDate(
 	session *model.TaskCreationSession,
 	text string,
 ) (*model.BotResponse, error) {
-	now := time.Now()
+
+	location := appLocation()
+	now := time.Now().In(location)
 
 	var taskDate time.Time
+	var menu model.MenuType
 
 	switch text {
 
 	case "Сегодня":
 		taskDate = now
+		menu = model.MenuTaskTimeToday
 
 	case "Завтра":
 		taskDate = now.AddDate(0, 0, 1)
+		menu = model.MenuTaskTime
 
 	case "Другая дата":
 		session.CurrentStep = TaskStepAwaitCustomDate
@@ -409,8 +414,8 @@ func (s *TaskService) handleDate(
 	}
 
 	return &model.BotResponse{
-		Text: "🕐 <b>Выбери время задачи</b>\n\nДоступное время: с 07:00 до 24:00.",
-		Menu: model.MenuTaskTime,
+		Text: "🕐 <b>Выбери время задачи</b>",
+		Menu: menu,
 	}, nil
 }
 
@@ -489,14 +494,39 @@ func (s *TaskService) handleTime(
 		return nil, errors.New("incomplete task creation session")
 	}
 
+	location := appLocation()
+	now := time.Now().In(location)
+
+	// Определяем, какое меню времени нужно вернуть при ошибке
+	menu := model.MenuTaskTime
+
+	today := dateOnly(now)
+
+	taskDate := time.Date(
+		session.TaskDate.Year(),
+		session.TaskDate.Month(),
+		session.TaskDate.Day(),
+		0,
+		0,
+		0,
+		0,
+		location,
+	)
+
+	if taskDate.Equal(today) {
+		menu = model.MenuTaskTimeToday
+	}
+
+	// Разбираем выбранное время
 	hour, minute, err := parseTaskTime(text)
 	if err != nil {
 		return &model.BotResponse{
 			Text: "Некорректное время.\n\nВыбери время с 07:00 до 24:00.",
-			Menu: model.MenuTaskTime,
+			Menu: menu,
 		}, nil
 	}
 
+	// Формируем полную дату + время
 	dueAt := time.Date(
 		session.TaskDate.Year(),
 		session.TaskDate.Month(),
@@ -505,10 +535,10 @@ func (s *TaskService) handleTime(
 		minute,
 		0,
 		0,
-		time.Local,
+		location,
 	)
 
-	// 24:00 фактически является 00:00 следующего дня
+	// 24:00 = 00:00 следующего дня
 	if hour == 24 {
 		dueAt = time.Date(
 			session.TaskDate.Year(),
@@ -518,17 +548,20 @@ func (s *TaskService) handleTime(
 			0,
 			0,
 			0,
-			time.Local,
+			location,
 		).AddDate(0, 0, 1)
 	}
 
-	if dueAt.Before(time.Now()) {
+	// Дополнительная защита:
+	// нельзя создать задачу на уже прошедшее время
+	if dueAt.Before(now) {
 		return &model.BotResponse{
 			Text: "Это время уже прошло. Выбери другое.",
-			Menu: model.MenuTaskTime,
+			Menu: menu,
 		}, nil
 	}
 
+	// Получаем пользователя
 	user, err := s.users.GetByTelegramID(
 		ctx,
 		session.TelegramID,
@@ -537,6 +570,7 @@ func (s *TaskService) handleTime(
 		return nil, err
 	}
 
+	// Формируем готовую задачу
 	task := model.Task{
 		UserID:   user.ID,
 		Category: *session.Category,
@@ -545,10 +579,15 @@ func (s *TaskService) handleTime(
 		DueAt:    dueAt,
 	}
 
-	if err := s.tasks.Create(ctx, &task); err != nil {
+	// Сохраняем задачу
+	if err := s.tasks.Create(
+		ctx,
+		&task,
+	); err != nil {
 		return nil, err
 	}
 
+	// Удаляем временную сессию создания
 	if err := s.registrationTasks.Delete(
 		ctx,
 		session.TelegramID,

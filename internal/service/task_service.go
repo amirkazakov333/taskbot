@@ -420,7 +420,13 @@ func (s *TaskService) handleCustomDate(
 	text string,
 ) (*model.BotResponse, error) {
 
-	taskDate, err := time.Parse("02.01.2006", text)
+	location := appLocation()
+
+	taskDate, err := time.ParseInLocation(
+		"02.01.2006",
+		text,
+		location,
+	)
 	if err != nil {
 		return &model.BotResponse{
 			Text: "Некорректная дата.\n\nВведи её в формате <b>ДД.ММ.ГГГГ</b>.\nНапример: <code>25.10.2026</code>",
@@ -428,7 +434,18 @@ func (s *TaskService) handleCustomDate(
 		}, nil
 	}
 
-	today := dateOnly(time.Now())
+	now := time.Now().In(location)
+
+	today := time.Date(
+		now.Year(),
+		now.Month(),
+		now.Day(),
+		0,
+		0,
+		0,
+		0,
+		location,
+	)
 
 	if taskDate.Before(today) {
 		return &model.BotResponse{
@@ -587,4 +604,13 @@ func parseTaskTime(value string) (int, int, error) {
 	}
 
 	return hour, minute, nil
+}
+
+func appLocation() *time.Location {
+	location, err := time.LoadLocation("Asia/Dushanbe")
+	if err != nil {
+		return time.FixedZone("UTC+5", 5*60*60)
+	}
+
+	return location
 }

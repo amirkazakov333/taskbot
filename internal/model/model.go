@@ -14,6 +14,7 @@ const (
 	MenuTaskCategory MenuType = "task_category"
 	MenuTaskDate     MenuType = "task_date"
 	MenuTaskTime     MenuType = "task_time"
+	MenuTaskFilter   MenuType = "task_filter"
 )
 
 const (

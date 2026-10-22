@@ -42,25 +42,83 @@ func (r *MessageRouter) Message(
 
 	text := strings.TrimSpace(update.Message.Text)
 
-	log.Printf("ROUTER: received %q", text)
+	switch text {
 
-	if text == ButtonAddTask {
+	// =========================
+	// Главное меню
+	// =========================
+
+	case ButtonAddTask:
 		r.taskHandler.StartCreateTask(
 			ctx,
 			b,
 			update,
 		)
 		return
+
+	case ButtonMyTasks:
+		r.taskHandler.ShowTasksMenu(
+			ctx,
+			b,
+			update,
+		)
+		return
+
+	case ButtonSettings:
+		sendResponse(
+			ctx,
+			b,
+			update.Message.Chat.ID,
+			&model.BotResponse{
+				Text: "⚙️ Настройки пока в разработке.",
+				Menu: model.MenuMain,
+			},
+		)
+		return
+
+	// =========================
+	// Фильтр "Мои задачи"
+	// =========================
+
+	case ButtonWorkTasks:
+		r.taskHandler.GetWorkTasks(
+			ctx,
+			b,
+			update,
+		)
+		return
+
+	case ButtonPersonalTasks:
+		r.taskHandler.GetPersonalTasks(
+			ctx,
+			b,
+			update,
+		)
+		return
+
+	case ButtonAllTasks:
+		r.taskHandler.GetAllTasks(
+			ctx,
+			b,
+			update,
+		)
+		return
 	}
-	// Проверяем, находится ли пользователь
-	// сейчас внутри создания задачи
+
+	// =========================
+	// Создание задачи
+	// =========================
+
 	activeTaskCreation, err := r.taskService.HasActiveCreation(
 		ctx,
 		update.Message.From.ID,
 	)
 
 	if err != nil {
-		log.Printf("check task creation session error: %v", err)
+		log.Printf(
+			"check task creation session error: %v",
+			err,
+		)
 
 		sendResponse(
 			ctx,
@@ -84,40 +142,10 @@ func (r *MessageRouter) Message(
 		return
 	}
 
-	// Пока эти разделы ещё не реализованы
-	switch text {
+	// =========================
+	// Регистрация пользователя
+	// =========================
 
-	case ButtonMyTasks:
-
-		sendResponse(
-			ctx,
-			b,
-			update.Message.Chat.ID,
-			&model.BotResponse{
-				Text: "📋 Раздел «Мои задачи» скоро добавим.",
-				Menu: model.MenuMain,
-			},
-		)
-
-		return
-
-	case ButtonSettings:
-
-		sendResponse(
-			ctx,
-			b,
-			update.Message.Chat.ID,
-			&model.BotResponse{
-				Text: "⚙️ Настройки пока в разработке.",
-				Menu: model.MenuMain,
-			},
-		)
-
-		return
-	}
-
-	// Если task creation нет,
-	// сообщение отправляется в регистрацию
 	r.userHandler.Message(
 		ctx,
 		b,

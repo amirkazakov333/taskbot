@@ -4,12 +4,19 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"telegram-bot/internal/model"
 	"telegram-bot/internal/service"
 
 	tgBot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+)
+
+const (
+	ButtonWorkTasks     = "💼 Рабочие"
+	ButtonPersonalTasks = "🏠 Личные"
+	ButtonAllTasks      = "📋 Все задачи"
 )
 
 type TaskHandler struct {
@@ -48,6 +55,142 @@ func (h *TaskHandler) StartCreateTask(
 			update.Message.Chat.ID,
 			&model.BotResponse{
 				Text: "⚠️ Не удалось начать создание задачи.",
+				Menu: model.MenuMain,
+			},
+		)
+
+		return
+	}
+
+	sendResponse(
+		ctx,
+		b,
+		update.Message.Chat.ID,
+		response,
+	)
+}
+
+func (h *TaskHandler) ShowTasksMenu(
+	ctx context.Context,
+	b *tgBot.Bot,
+	update *models.Update,
+) {
+	if update.Message == nil {
+		return
+	}
+
+	sendResponse(
+		ctx,
+		b,
+		update.Message.Chat.ID,
+		&model.BotResponse{
+			Text: "📋 <b>Какие задачи показать?</b>",
+			Menu: model.MenuTaskFilter,
+		},
+	)
+}
+
+func (h *TaskHandler) GetAllTasks(
+	ctx context.Context,
+	b *tgBot.Bot,
+	update *models.Update,
+) {
+	if update.Message == nil {
+		return
+	}
+
+	response, err := h.taskService.GetTasks(
+		ctx,
+		update.Message.From.ID,
+	)
+
+	if err != nil {
+		log.Printf("get all tasks error: %v", err)
+
+		sendResponse(
+			ctx,
+			b,
+			update.Message.Chat.ID,
+			&model.BotResponse{
+				Text: "⚠️ Не удалось получить задачи.",
+				Menu: model.MenuMain,
+			},
+		)
+
+		return
+	}
+
+	sendResponse(
+		ctx,
+		b,
+		update.Message.Chat.ID,
+		response,
+	)
+}
+
+func (h *TaskHandler) GetWorkTasks(
+	ctx context.Context,
+	b *tgBot.Bot,
+	update *models.Update,
+) {
+	if update.Message == nil {
+		return
+	}
+
+	response, err := h.taskService.GetTasksByCategory(
+		ctx,
+		update.Message.From.ID,
+		model.TaskCategoryWork,
+	)
+
+	if err != nil {
+		log.Printf("get work tasks error: %v", err)
+
+		sendResponse(
+			ctx,
+			b,
+			update.Message.Chat.ID,
+			&model.BotResponse{
+				Text: "⚠️ Не удалось получить рабочие задачи.",
+				Menu: model.MenuMain,
+			},
+		)
+
+		return
+	}
+
+	sendResponse(
+		ctx,
+		b,
+		update.Message.Chat.ID,
+		response,
+	)
+}
+
+func (h *TaskHandler) GetPersonalTasks(
+	ctx context.Context,
+	b *tgBot.Bot,
+	update *models.Update,
+) {
+	if update.Message == nil {
+		return
+	}
+
+	response, err := h.taskService.GetTasksByCategory(
+		ctx,
+		update.Message.From.ID,
+		model.TaskCategoryPersonal,
+	)
+
+	if err != nil {
+		log.Printf("get personal tasks error: %v", err)
+
+		sendResponse(
+			ctx,
+			b,
+			update.Message.Chat.ID,
+			&model.BotResponse{
+				Text: "⚠️ Не удалось получить личные задачи.",
 				Menu: model.MenuMain,
 			},
 		)
@@ -132,6 +275,9 @@ func sendResponse(
 	case model.MenuTaskTime:
 		params.ReplyMarkup = taskTimeMenu()
 
+	case model.MenuTaskFilter:
+		params.ReplyMarkup = taskFilterMenu()
+
 	case model.MenuNone:
 		params.ReplyMarkup = &models.ReplyKeyboardRemove{
 			RemoveKeyboard: true,
@@ -178,7 +324,17 @@ func taskTimeMenu() *models.ReplyKeyboardMarkup {
 	var keyboard [][]models.KeyboardButton
 	var row []models.KeyboardButton
 
-	for totalMinutes := 7 * 60; totalMinutes <= 24*60; totalMinutes += 30 {
+	now := time.Now()
+
+	currentMinutes := now.Hour()*60 + now.Minute()
+
+	startMinutes := (currentMinutes/30 + 1) * 30
+
+	if startMinutes < 7*60 {
+		startMinutes = 7 * 60
+	}
+
+	for totalMinutes := startMinutes; totalMinutes <= 24*60; totalMinutes += 30 {
 
 		hour := totalMinutes / 60
 		minute := totalMinutes % 60
@@ -208,6 +364,22 @@ func taskTimeMenu() *models.ReplyKeyboardMarkup {
 
 	return &models.ReplyKeyboardMarkup{
 		Keyboard:       keyboard,
+		ResizeKeyboard: true,
+		IsPersistent:   true,
+	}
+}
+
+func taskFilterMenu() *models.ReplyKeyboardMarkup {
+	return &models.ReplyKeyboardMarkup{
+		Keyboard: [][]models.KeyboardButton{
+			{
+				{Text: ButtonWorkTasks},
+				{Text: ButtonPersonalTasks},
+			},
+			{
+				{Text: ButtonAllTasks},
+			},
+		},
 		ResizeKeyboard: true,
 		IsPersistent:   true,
 	}

@@ -68,6 +68,89 @@ func (s *TaskService) StartCreateTask(ctx context.Context, telegramID int64) (*m
 	}, nil
 }
 
+func (s *TaskService) GetTasks(
+	ctx context.Context,
+	telegramID int64,
+) (*model.BotResponse, error) {
+
+	user, err := s.users.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tasks, err := s.tasks.GetByUserID(
+		ctx,
+		user.ID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tasks) == 0 {
+		return &model.BotResponse{
+			Text: "📋 У вас пока нет активных задач.",
+			Menu: model.MenuMain,
+		}, nil
+	}
+
+	return &model.BotResponse{
+		Text: formatTasks(tasks),
+		Menu: model.MenuMain,
+	}, nil
+}
+
+func (s *TaskService) GetTasksByCategory(
+	ctx context.Context,
+	telegramID int64,
+	category model.TaskCategory,
+) (*model.BotResponse, error) {
+
+	user, err := s.users.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tasks, err := s.tasks.GetByUserIDAndCategory(
+		ctx,
+		user.ID,
+		category,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tasks) == 0 {
+
+		var categoryName string
+
+		switch category {
+		case model.TaskCategoryWork:
+			categoryName = "рабочих"
+		case model.TaskCategoryPersonal:
+			categoryName = "личных"
+		}
+
+		return &model.BotResponse{
+			Text: fmt.Sprintf(
+				"📋 У вас пока нет %s задач.",
+				categoryName,
+			),
+			Menu: model.MenuMain,
+		}, nil
+	}
+
+	return &model.BotResponse{
+		Text: formatTasks(tasks),
+		Menu: model.MenuMain,
+	}, nil
+}
+
 func (s *TaskService) HandleTaskMessage(ctx context.Context, telegramID int64, text string) (*model.BotResponse, error) {
 	session, err := s.registrationTasks.GetByTelegramID(
 		ctx,
@@ -176,6 +259,42 @@ func taskCreationPrompt(step string) *model.BotResponse {
 			Menu: model.MenuMain,
 		}
 	}
+}
+
+func formatTasks(tasks []model.Task) string {
+	var builder strings.Builder
+
+	builder.WriteString(
+		"📋 <b>Ваши задачи:</b>\n\n",
+	)
+
+	for i, task := range tasks {
+
+		var category string
+
+		switch task.Category {
+
+		case model.TaskCategoryWork:
+			category = "💼 Работа"
+
+		case model.TaskCategoryPersonal:
+			category = "🏠 Личное"
+		}
+
+		builder.WriteString(
+			fmt.Sprintf(
+				"%d. <b>%s</b>\n"+
+					"%s\n"+
+					"📅 %s\n\n",
+				i+1,
+				task.Title,
+				category,
+				task.DueAt.Format("02.01.2006 15:04"),
+			),
+		)
+	}
+
+	return builder.String()
 }
 
 func (s *TaskService) handleCategory(ctx context.Context, session *model.TaskCreationSession, text string) (*model.BotResponse, error) {

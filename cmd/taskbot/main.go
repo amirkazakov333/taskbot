@@ -19,7 +19,6 @@ func main() {
 		log.Fatalf("Config error: %v", err)
 	}
 
-	// Контекст только для первоначального подключения к PostgreSQL
 	ctx, cancel := context.WithTimeout(
 		context.Background(),
 		5*time.Second,
@@ -34,10 +33,6 @@ func main() {
 
 	log.Println("PostgreSQL connection successful")
 
-	// =========================
-	// Repositories
-	// =========================
-
 	usersRepository :=
 		repository.NewUserPostgresRepository(pool)
 
@@ -50,10 +45,6 @@ func main() {
 	taskRepository :=
 		repository.NewTaskPostgresRepository(pool)
 
-	// =========================
-	// Services
-	// =========================
-
 	userService := service.NewUserService(
 		usersRepository,
 		registrationSessionRepository,
@@ -64,10 +55,6 @@ func main() {
 		taskRepository,
 		taskRegistrationRepository,
 	)
-
-	// =========================
-	// Handlers
-	// =========================
 
 	userHandler := handler.NewUserHandler(
 		*userService,
@@ -82,10 +69,6 @@ func main() {
 		taskHandler,
 		taskService,
 	)
-
-	// =========================
-	// Telegram Bot
-	// =========================
 
 	tgBot, err := tgbot.New(cfg.TelegramBotToken)
 	if err != nil {

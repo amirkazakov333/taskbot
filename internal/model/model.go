@@ -8,6 +8,34 @@ type TaskCategory string
 
 type TaskStatus string
 
+type UserSessionType string
+
+const (
+	SessionTypeRegistration   UserSessionType = "registration"
+	SessionTypeTaskCreation   UserSessionType = "task_creation"
+	SessionTypeTaskReschedule UserSessionType = "task_reschedule"
+)
+
+type UserSession struct {
+	TelegramID  int64
+	SessionType UserSessionType
+
+	Username      *string
+	FirstName     string
+	LastName      string
+	PreferredName string
+
+	Category *TaskCategory
+	Title    *string
+	TaskDate *time.Time
+
+	TargetTaskID *int64
+
+	CurrentStep string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 const (
 	MenuNone          MenuType = "none"
 	MenuMain          MenuType = "main"
@@ -24,8 +52,9 @@ const (
 )
 
 const (
-	TaskStatusTodo TaskStatus = "todo"
-	TaskStatusDone TaskStatus = "done"
+	TaskStatusTodo      TaskStatus = "todo"
+	TaskStatusDone      TaskStatus = "done"
+	TaskStatusCancelled TaskStatus = "cancelled"
 )
 
 const (

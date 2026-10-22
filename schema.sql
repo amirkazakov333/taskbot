@@ -12,8 +12,17 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 
-CREATE TABLE IF NOT EXISTS registration_sessions (
+CREATE TABLE IF NOT EXISTS user_sessions (
     telegram_id BIGINT PRIMARY KEY,
+
+    session_type VARCHAR(30) NOT NULL
+        CHECK (
+            session_type IN (
+                'registration',
+                'task_creation',
+                'task_reschedule'
+            )
+        ),
 
     username TEXT,
 
@@ -21,10 +30,39 @@ CREATE TABLE IF NOT EXISTS registration_sessions (
     last_name TEXT NOT NULL DEFAULT '',
     preferred_name TEXT NOT NULL DEFAULT '',
 
+    category VARCHAR(20),
+    title TEXT,
+    task_date DATE,
+
+    target_task_id BIGINT
+        REFERENCES tasks(id)
+        ON DELETE CASCADE,
+
     current_step TEXT NOT NULL,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT user_sessions_category_check
+        CHECK (
+            category IS NULL
+            OR category IN ('work', 'personal')
+        ),
+
+    CONSTRAINT user_sessions_target_task_check
+        CHECK (
+            (
+                session_type = 'task_reschedule'
+                AND target_task_id IS NOT NULL
+            )
+            OR (
+                session_type IN (
+                    'registration',
+                    'task_creation'
+                )
+                AND target_task_id IS NULL
+            )
+        )
 );
 
 
@@ -60,26 +98,17 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 
-CREATE TABLE IF NOT EXISTS task_creation_sessions (
-    telegram_id BIGINT PRIMARY KEY,
-    category VARCHAR(20),
-    title TEXT,
-    task_date DATE,
-    current_step TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT task_creation_category_check
-        CHECK (
-            category IS NULL
-            OR category IN ('work', 'personal')
-        )
-);
-
-
 CREATE INDEX IF NOT EXISTS idx_tasks_user_category_status
     ON tasks (user_id, category, status);
 
 
 CREATE INDEX IF NOT EXISTS idx_tasks_due_todo
     ON tasks (due_at)
-    WHERE status = 'todo';
+    WHERE status = 'todo'
+
+    ALTER TABLE tasks
+    DROP CONSTRAINT IF EXISTS tasks_status_check;
+
+ALTER TABLE tasks
+    ADD CONSTRAINT tasks_status_check
+    CHECK (status IN ('todo', 'done', 'cancelled'));

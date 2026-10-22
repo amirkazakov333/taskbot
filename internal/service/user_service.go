@@ -21,21 +21,32 @@ const (
 )
 
 type UserService struct {
-	users                repository.UserRepository
-	registrationSessions repository.RegistrationSessionRepository
+	users    repository.UserRepository
+	sessions repository.UserSessionRepository
 }
 
-func NewUserService(users repository.UserRepository, registrationSessions repository.RegistrationSessionRepository) *UserService {
+func NewUserService(
+	users repository.UserRepository,
+	sessions repository.UserSessionRepository,
+) *UserService {
 	return &UserService{
-		users:                users,
-		registrationSessions: registrationSessions,
+		users:    users,
+		sessions: sessions,
 	}
 }
 
-func (s *UserService) Start(ctx context.Context, update *models.Update) (*model.BotResponse, error) {
+func (s *UserService) Start(
+	ctx context.Context,
+	update *models.Update,
+) (*model.BotResponse, error) {
+
+	if update.Message == nil {
+		return nil, errors.New("message is nil")
+	}
+
 	telegramID := update.Message.From.ID
 
-	// 1. Проверяем, зарегистрирован ли пользователь
+	// 1. Проверяем, зарегистрирован ли пользователь.
 	user, err := s.users.GetByTelegramID(ctx, telegramID)
 
 	if err == nil {
@@ -56,28 +67,36 @@ func (s *UserService) Start(ctx context.Context, update *models.Update) (*model.
 		return nil, err
 	}
 
-	// 2. Проверяем, есть ли незавершённая регистрация
-	session, err := s.registrationSessions.GetByTelegramID(
+	// 2. Проверяем общую сессию пользователя.
+	session, err := s.sessions.GetByTelegramID(
 		ctx,
 		telegramID,
 	)
 
 	if err == nil {
-		switch session.CurrentStep {
-
-		case stepAwaitFirstName,
-			stepAwaitLastName,
-			stepAwaitPreferredName:
-
+		switch session.SessionType {
+		case model.SessionTypeRegistration:
 			return &model.BotResponse{
 				Text: registrationPrompt(session.CurrentStep),
 				Menu: model.MenuNone,
 			}, nil
 
+		case model.SessionTypeTaskCreation:
+			return &model.BotResponse{
+				Text: "У тебя уже начато создание задачи. Продолжи этот процесс.",
+				Menu: model.MenuMain,
+			}, nil
+
+		case model.SessionTypeTaskReschedule:
+			return &model.BotResponse{
+				Text: "У тебя уже начат перенос задачи. Продолжи этот процесс.",
+				Menu: model.MenuMain,
+			}, nil
+
 		default:
 			return nil, fmt.Errorf(
-				"unknown registration step: %q",
-				session.CurrentStep,
+				"unknown session type: %q",
+				session.SessionType,
 			)
 		}
 	}
@@ -86,23 +105,21 @@ func (s *UserService) Start(ctx context.Context, update *models.Update) (*model.
 		return nil, err
 	}
 
-	// 3. Новый пользователь — создаём registration session
+	// 3. Создаём новую сессию регистрации.
 	var username *string
 
 	if name := update.Message.From.Username; name != "" {
 		username = &name
 	}
 
-	newSession := model.RegistrationSession{
+	newSession := model.UserSession{
 		TelegramID:  telegramID,
+		SessionType: model.SessionTypeRegistration,
 		Username:    username,
 		CurrentStep: stepAwaitFirstName,
 	}
 
-	if err := s.registrationSessions.RegisterCreate(
-		ctx,
-		newSession,
-	); err != nil {
+	if err := s.sessions.Create(ctx, newSession); err != nil {
 		return nil, err
 	}
 
@@ -117,12 +134,16 @@ func (s *UserService) Start(ctx context.Context, update *models.Update) (*model.
 	}, nil
 }
 
-func (s *UserService) HandleStartMessage(ctx context.Context, telegramID int64, text string) (*model.BotResponse, error) {
-	// 1. Проверяем, зарегистрирован ли пользователь
+func (s *UserService) HandleStartMessage(
+	ctx context.Context,
+	telegramID int64,
+	text string,
+) (*model.BotResponse, error) {
+
+	// 1. Проверяем, зарегистрирован ли пользователь.
 	_, err := s.users.GetByTelegramID(ctx, telegramID)
 
 	if err == nil {
-		// Пока обработку кнопок главного меню ещё не сделали.
 		return &model.BotResponse{
 			Text: "Выбери нужное действие 👇",
 			Menu: model.MenuMain,
@@ -133,8 +154,8 @@ func (s *UserService) HandleStartMessage(ctx context.Context, telegramID int64, 
 		return nil, err
 	}
 
-	// 2. Получаем текущую registration session
-	session, err := s.registrationSessions.GetByTelegramID(
+	// 2. Получаем общую сессию.
+	session, err := s.sessions.GetByTelegramID(
 		ctx,
 		telegramID,
 	)
@@ -150,9 +171,16 @@ func (s *UserService) HandleStartMessage(ctx context.Context, telegramID int64, 
 		return nil, err
 	}
 
+	// Этот метод обрабатывает только регистрацию.
+	if session.SessionType != model.SessionTypeRegistration {
+		return &model.BotResponse{
+			Text: "Сейчас у тебя активен другой процесс. Продолжи его, прежде чем начинать регистрацию.",
+			Menu: model.MenuMain,
+		}, nil
+	}
+
 	text = strings.TrimSpace(text)
 
-	// Пустое сообщение или команда во время регистрации
 	if text == "" || strings.HasPrefix(text, "/") {
 		return &model.BotResponse{
 			Text: registrationPrompt(session.CurrentStep),
@@ -160,18 +188,14 @@ func (s *UserService) HandleStartMessage(ctx context.Context, telegramID int64, 
 		}, nil
 	}
 
-	// 3. Обрабатываем текущий этап регистрации
+	// 3. Обрабатываем текущий этап регистрации.
 	switch session.CurrentStep {
 
 	case stepAwaitFirstName:
-
 		session.FirstName = text
 		session.CurrentStep = stepAwaitLastName
 
-		if err := s.registrationSessions.Update(
-			ctx,
-			*session,
-		); err != nil {
+		if err := s.sessions.Update(ctx, *session); err != nil {
 			return nil, err
 		}
 
@@ -181,14 +205,10 @@ func (s *UserService) HandleStartMessage(ctx context.Context, telegramID int64, 
 		}, nil
 
 	case stepAwaitLastName:
-
 		session.LastName = text
 		session.CurrentStep = stepAwaitPreferredName
 
-		if err := s.registrationSessions.Update(
-			ctx,
-			*session,
-		); err != nil {
+		if err := s.sessions.Update(ctx, *session); err != nil {
 			return nil, err
 		}
 
@@ -198,9 +218,7 @@ func (s *UserService) HandleStartMessage(ctx context.Context, telegramID int64, 
 		}, nil
 
 	case stepAwaitPreferredName:
-
 		switch strings.ToLower(text) {
-
 		case "по имени":
 			session.PreferredName = session.FirstName
 
@@ -221,7 +239,11 @@ func (s *UserService) HandleStartMessage(ctx context.Context, telegramID int64, 
 	}
 }
 
-func (s *UserService) completeRegistration(ctx context.Context, session *model.RegistrationSession) (*model.BotResponse, error) {
+func (s *UserService) completeRegistration(
+	ctx context.Context,
+	session *model.UserSession,
+) (*model.BotResponse, error) {
+
 	user := model.User{
 		TelegramID:    session.TelegramID,
 		Username:      session.Username,
@@ -234,7 +256,7 @@ func (s *UserService) completeRegistration(ctx context.Context, session *model.R
 		return nil, err
 	}
 
-	if err := s.registrationSessions.Delete(
+	if err := s.sessions.Delete(
 		ctx,
 		session.TelegramID,
 	); err != nil {
@@ -255,7 +277,6 @@ func (s *UserService) completeRegistration(ctx context.Context, session *model.R
 
 func registrationPrompt(step string) string {
 	switch step {
-
 	case stepAwaitFirstName:
 		return "<b>📝 Шаг 1 из 3 · Имя</b>\n\n" +
 			"Напиши своё имя. 👋"

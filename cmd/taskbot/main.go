@@ -34,14 +34,15 @@ func main() {
 
 	log.Println("PostgreSQL connection successful")
 
+	// =========================
+	// Repositories
+	// =========================
+
 	usersRepository :=
 		repository.NewUserPostgresRepository(pool)
 
-	registrationSessionRepository :=
-		repository.NewRegistrationSessionPostgresRepository(pool)
-
-	taskRegistrationRepository :=
-		repository.NewTaskRegistrationPostgresRepository(pool)
+	userSessionRepository :=
+		repository.NewUserSessionPostgresRepository(pool)
 
 	taskRepository :=
 		repository.NewTaskPostgresRepository(pool)
@@ -49,21 +50,28 @@ func main() {
 	reminderRepository :=
 		repository.NewReminderPostgresRepository(pool)
 
+	// =========================
+	// Services
+	// =========================
+
 	userService := service.NewUserService(
 		usersRepository,
-		registrationSessionRepository,
+		userSessionRepository,
 	)
 
 	taskService := service.NewTaskService(
 		usersRepository,
 		taskRepository,
-		taskRegistrationRepository,
+		userSessionRepository,
 	)
 
-	reminderService :=
-		service.NewReminderService(
-			reminderRepository,
-		)
+	reminderService := service.NewReminderService(
+		reminderRepository,
+	)
+
+	// =========================
+	// Handlers
+	// =========================
 
 	userHandler := handler.NewUserHandler(
 		*userService,
@@ -79,6 +87,10 @@ func main() {
 		taskService,
 	)
 
+	// =========================
+	// Telegram Bot
+	// =========================
+
 	tgBot, err := tgbot.New(cfg.TelegramBotToken)
 	if err != nil {
 		log.Fatalf(
@@ -87,13 +99,12 @@ func main() {
 		)
 	}
 
-	reminderWorker :=
-		reminder.NewWorker(
-			reminderService,
-			tgBot,
-		)
+	reminderWorker := reminder.NewWorker(
+		reminderService,
+		tgBot,
+	)
 
-	// /start обрабатывается UserHandler
+	// /start обрабатывается UserHandler.
 	tgBot.RegisterHandler(
 		tgbot.HandlerTypeMessageText,
 		"/start",
@@ -101,7 +112,7 @@ func main() {
 		userHandler.StartHandler,
 	)
 
-	// Все остальные сообщения идут через Router
+	// Все остальные текстовые сообщения идут через Router.
 	tgBot.RegisterHandler(
 		tgbot.HandlerTypeMessageText,
 		"",
@@ -109,15 +120,14 @@ func main() {
 		messageRouter.Message,
 	)
 
-	appCtx, appCancel :=
-		context.WithCancel(
-			context.Background(),
-		)
+	appCtx, appCancel := context.WithCancel(
+		context.Background(),
+	)
 	defer appCancel()
 
 	go reminderWorker.Start(appCtx)
 
 	log.Println("Telegram-бот запущен")
 
-	tgBot.Start(context.Background())
+	tgBot.Start(appCtx)
 }

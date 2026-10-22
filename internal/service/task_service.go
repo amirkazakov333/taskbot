@@ -22,24 +22,30 @@ const (
 )
 
 type TaskService struct {
-	users             repository.UserRepository
-	tasks             repository.TaskRepository
-	registrationTasks repository.TaskRegistrationRepository
+	users    repository.UserRepository
+	tasks    repository.TaskRepository
+	sessions repository.UserSessionRepository
 }
 
-func NewTaskService(users repository.UserRepository, tasks repository.TaskRepository, registrationTasks repository.TaskRegistrationRepository) *TaskService {
+func NewTaskService(
+	users repository.UserRepository,
+	tasks repository.TaskRepository,
+	sessions repository.UserSessionRepository,
+) *TaskService {
 	return &TaskService{
-		users:             users,
-		tasks:             tasks,
-		registrationTasks: registrationTasks,
+		users:    users,
+		tasks:    tasks,
+		sessions: sessions,
 	}
 }
 
-func (s *TaskService) StartCreateTask(ctx context.Context, telegramID int64) (*model.BotResponse, error) {
-	_, err := s.users.GetByTelegramID(
-		ctx,
-		telegramID,
-	)
+func (s *TaskService) StartCreateTask(
+	ctx context.Context,
+	telegramID int64,
+) (*model.BotResponse, error) {
+
+	// Создавать задачи могут только зарегистрированные пользователи.
+	_, err := s.users.GetByTelegramID(ctx, telegramID)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return &model.BotResponse{
@@ -52,29 +58,48 @@ func (s *TaskService) StartCreateTask(ctx context.Context, telegramID int64) (*m
 		return nil, err
 	}
 
-	session, err := s.registrationTasks.GetByTelegramID(
+	session, err := s.sessions.GetByTelegramID(
 		ctx,
 		telegramID,
 	)
 
-	// Если создание задачи уже было начато
 	if err == nil {
-		return taskCreationPrompt(session.CurrentStep), nil
+		switch session.SessionType {
+		case model.SessionTypeTaskCreation:
+			// Продолжаем уже начатое создание задачи.
+			return taskCreationPrompt(session.CurrentStep), nil
+
+		case model.SessionTypeRegistration:
+			return &model.BotResponse{
+				Text: "Сначала заверши регистрацию.",
+				Menu: model.MenuNone,
+			}, nil
+
+		case model.SessionTypeTaskReschedule:
+			return &model.BotResponse{
+				Text: "Сначала заверши перенос задачи.",
+				Menu: model.MenuNone,
+			}, nil
+
+		default:
+			return nil, fmt.Errorf(
+				"unknown session type: %q",
+				session.SessionType,
+			)
+		}
 	}
 
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
 
-	newSession := model.TaskCreationSession{
+	newSession := model.UserSession{
 		TelegramID:  telegramID,
+		SessionType: model.SessionTypeTaskCreation,
 		CurrentStep: TaskStepAwaitCategory,
 	}
 
-	if err := s.registrationTasks.RegisterCreate(
-		ctx,
-		newSession,
-	); err != nil {
+	if err := s.sessions.Create(ctx, newSession); err != nil {
 		return nil, err
 	}
 
@@ -84,23 +109,38 @@ func (s *TaskService) StartCreateTask(ctx context.Context, telegramID int64) (*m
 	}, nil
 }
 
+func (s *TaskService) HasActiveCreation(
+	ctx context.Context,
+	telegramID int64,
+) (bool, error) {
+
+	session, err := s.sessions.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return session.SessionType == model.SessionTypeTaskCreation, nil
+}
+
 func (s *TaskService) GetTasks(
 	ctx context.Context,
 	telegramID int64,
 ) (*model.BotResponse, error) {
 
-	user, err := s.users.GetByTelegramID(
-		ctx,
-		telegramID,
-	)
+	user, err := s.users.GetByTelegramID(ctx, telegramID)
 	if err != nil {
 		return nil, err
 	}
 
-	tasks, err := s.tasks.GetByUserID(
-		ctx,
-		user.ID,
-	)
+	tasks, err := s.tasks.GetByUserID(ctx, user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -124,10 +164,7 @@ func (s *TaskService) GetTasksByCategory(
 	category model.TaskCategory,
 ) (*model.BotResponse, error) {
 
-	user, err := s.users.GetByTelegramID(
-		ctx,
-		telegramID,
-	)
+	user, err := s.users.GetByTelegramID(ctx, telegramID)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +179,6 @@ func (s *TaskService) GetTasksByCategory(
 	}
 
 	if len(tasks) == 0 {
-
 		var categoryName string
 
 		switch category {
@@ -167,8 +203,13 @@ func (s *TaskService) GetTasksByCategory(
 	}, nil
 }
 
-func (s *TaskService) HandleTaskMessage(ctx context.Context, telegramID int64, text string) (*model.BotResponse, error) {
-	session, err := s.registrationTasks.GetByTelegramID(
+func (s *TaskService) HandleTaskMessage(
+	ctx context.Context,
+	telegramID int64,
+	text string,
+) (*model.BotResponse, error) {
+
+	session, err := s.sessions.GetByTelegramID(
 		ctx,
 		telegramID,
 	)
@@ -184,6 +225,14 @@ func (s *TaskService) HandleTaskMessage(ctx context.Context, telegramID int64, t
 		return nil, err
 	}
 
+	// Этот обработчик работает только при создании задачи.
+	if session.SessionType != model.SessionTypeTaskCreation {
+		return &model.BotResponse{
+			Text: "Сейчас у тебя выполняется другой процесс. Сначала заверши его.",
+			Menu: model.MenuMain,
+		}, nil
+	}
+
 	text = strings.TrimSpace(text)
 
 	if text == "" {
@@ -191,7 +240,6 @@ func (s *TaskService) HandleTaskMessage(ctx context.Context, telegramID int64, t
 	}
 
 	switch session.CurrentStep {
-
 	case TaskStepAwaitCategory:
 		return s.handleCategory(ctx, session, text)
 
@@ -215,30 +263,8 @@ func (s *TaskService) HandleTaskMessage(ctx context.Context, telegramID int64, t
 	}
 }
 
-func (s *TaskService) HasActiveCreation(
-	ctx context.Context,
-	telegramID int64,
-) (bool, error) {
-
-	_, err := s.registrationTasks.GetByTelegramID(
-		ctx,
-		telegramID,
-	)
-
-	if err == nil {
-		return true, nil
-	}
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-
-	return false, err
-}
-
 func taskCreationPrompt(step string) *model.BotResponse {
 	switch step {
-
 	case TaskStepAwaitCategory:
 		return &model.BotResponse{
 			Text: "📂 <b>Выбери категорию задачи</b>",
@@ -280,34 +306,25 @@ func taskCreationPrompt(step string) *model.BotResponse {
 func formatTasks(tasks []model.Task) string {
 	var builder strings.Builder
 
-	builder.WriteString(
-		"📋 <b>Ваши задачи:</b>\n\n",
-	)
+	builder.WriteString("📋 <b>Ваши задачи:</b>\n\n")
 
 	location := appLocation()
 
 	for i, task := range tasks {
-
 		var category string
 
 		switch task.Category {
-
 		case model.TaskCategoryWork:
 			category = "💼 Работа"
-
 		case model.TaskCategoryPersonal:
 			category = "🏠 Личное"
 		}
 
-		// Переводим время из PostgreSQL
-		// в часовой пояс Душанбе
 		dueAt := task.DueAt.In(location)
 
 		builder.WriteString(
 			fmt.Sprintf(
-				"%d. <b>%s</b>\n"+
-					"%s\n"+
-					"📅 %s\n\n",
+				"%d. <b>%s</b>\n%s\n📅 %s\n\n",
 				i+1,
 				task.Title,
 				category,
@@ -319,11 +336,15 @@ func formatTasks(tasks []model.Task) string {
 	return builder.String()
 }
 
-func (s *TaskService) handleCategory(ctx context.Context, session *model.TaskCreationSession, text string) (*model.BotResponse, error) {
+func (s *TaskService) handleCategory(
+	ctx context.Context,
+	session *model.UserSession,
+	text string,
+) (*model.BotResponse, error) {
+
 	var category model.TaskCategory
 
 	switch text {
-
 	case "💼 Работа":
 		category = model.TaskCategoryWork
 
@@ -340,10 +361,7 @@ func (s *TaskService) handleCategory(ctx context.Context, session *model.TaskCre
 	session.Category = &category
 	session.CurrentStep = TaskStepAwaitTitle
 
-	if err := s.registrationTasks.Update(
-		ctx,
-		*session,
-	); err != nil {
+	if err := s.sessions.Update(ctx, *session); err != nil {
 		return nil, err
 	}
 
@@ -353,7 +371,12 @@ func (s *TaskService) handleCategory(ctx context.Context, session *model.TaskCre
 	}, nil
 }
 
-func (s *TaskService) handleTitle(ctx context.Context, session *model.TaskCreationSession, text string) (*model.BotResponse, error) {
+func (s *TaskService) handleTitle(
+	ctx context.Context,
+	session *model.UserSession,
+	text string,
+) (*model.BotResponse, error) {
+
 	if len([]rune(text)) < 2 {
 		return &model.BotResponse{
 			Text: "Название слишком короткое. Напиши задачу подробнее.",
@@ -366,10 +389,7 @@ func (s *TaskService) handleTitle(ctx context.Context, session *model.TaskCreati
 	session.Title = &title
 	session.CurrentStep = TaskStepAwaitDate
 
-	if err := s.registrationTasks.Update(
-		ctx,
-		*session,
-	); err != nil {
+	if err := s.sessions.Update(ctx, *session); err != nil {
 		return nil, err
 	}
 
@@ -381,7 +401,7 @@ func (s *TaskService) handleTitle(ctx context.Context, session *model.TaskCreati
 
 func (s *TaskService) handleDate(
 	ctx context.Context,
-	session *model.TaskCreationSession,
+	session *model.UserSession,
 	text string,
 ) (*model.BotResponse, error) {
 
@@ -392,7 +412,6 @@ func (s *TaskService) handleDate(
 	var menu model.MenuType
 
 	switch text {
-
 	case "Сегодня":
 		taskDate = now
 		menu = model.MenuTaskTimeToday
@@ -404,10 +423,7 @@ func (s *TaskService) handleDate(
 	case "Другая дата":
 		session.CurrentStep = TaskStepAwaitCustomDate
 
-		if err := s.registrationTasks.Update(
-			ctx,
-			*session,
-		); err != nil {
+		if err := s.sessions.Update(ctx, *session); err != nil {
 			return nil, err
 		}
 
@@ -428,10 +444,7 @@ func (s *TaskService) handleDate(
 	session.TaskDate = &taskDate
 	session.CurrentStep = TaskStepAwaitTime
 
-	if err := s.registrationTasks.Update(
-		ctx,
-		*session,
-	); err != nil {
+	if err := s.sessions.Update(ctx, *session); err != nil {
 		return nil, err
 	}
 
@@ -443,7 +456,7 @@ func (s *TaskService) handleDate(
 
 func (s *TaskService) handleCustomDate(
 	ctx context.Context,
-	session *model.TaskCreationSession,
+	session *model.UserSession,
 	text string,
 ) (*model.BotResponse, error) {
 
@@ -462,17 +475,7 @@ func (s *TaskService) handleCustomDate(
 	}
 
 	now := time.Now().In(location)
-
-	today := time.Date(
-		now.Year(),
-		now.Month(),
-		now.Day(),
-		0,
-		0,
-		0,
-		0,
-		location,
-	)
+	today := dateOnly(now)
 
 	if taskDate.Before(today) {
 		return &model.BotResponse{
@@ -484,16 +487,13 @@ func (s *TaskService) handleCustomDate(
 	session.TaskDate = &taskDate
 	session.CurrentStep = TaskStepAwaitTime
 
-	if err := s.registrationTasks.Update(
-		ctx,
-		*session,
-	); err != nil {
+	if err := s.sessions.Update(ctx, *session); err != nil {
 		return nil, err
 	}
 
 	menu := model.MenuTaskTime
 
-	if taskDate.Equal(today) {
+	if sameDate(taskDate, today) {
 		menu = model.MenuTaskTimeToday
 	}
 
@@ -505,41 +505,24 @@ func (s *TaskService) handleCustomDate(
 
 func (s *TaskService) handleTime(
 	ctx context.Context,
-	session *model.TaskCreationSession,
+	session *model.UserSession,
 	text string,
 ) (*model.BotResponse, error) {
 
 	if session.Category == nil ||
 		session.Title == nil ||
 		session.TaskDate == nil {
-
 		return nil, errors.New("incomplete task creation session")
 	}
 
 	location := appLocation()
 	now := time.Now().In(location)
 
-	// Определяем, какое меню времени нужно вернуть при ошибке
 	menu := model.MenuTaskTime
-
-	today := dateOnly(now)
-
-	taskDate := time.Date(
-		session.TaskDate.Year(),
-		session.TaskDate.Month(),
-		session.TaskDate.Day(),
-		0,
-		0,
-		0,
-		0,
-		location,
-	)
-
-	if taskDate.Equal(today) {
+	if sameDate(*session.TaskDate, now) {
 		menu = model.MenuTaskTimeToday
 	}
 
-	// Разбираем выбранное время
 	hour, minute, err := parseTaskTime(text)
 	if err != nil {
 		return &model.BotResponse{
@@ -548,7 +531,6 @@ func (s *TaskService) handleTime(
 		}, nil
 	}
 
-	// Формируем полную дату + время
 	dueAt := time.Date(
 		session.TaskDate.Year(),
 		session.TaskDate.Month(),
@@ -560,30 +542,19 @@ func (s *TaskService) handleTime(
 		location,
 	)
 
-	// 24:00 = 00:00 следующего дня
+	// 24:00 означает полночь следующего дня.
 	if hour == 24 {
-		dueAt = time.Date(
-			session.TaskDate.Year(),
-			session.TaskDate.Month(),
-			session.TaskDate.Day(),
-			0,
-			0,
-			0,
-			0,
-			location,
-		).AddDate(0, 0, 1)
+		dueAt = dateOnly(*session.TaskDate).AddDate(0, 0, 1)
 	}
 
-	// Дополнительная защита:
-	// нельзя создать задачу на уже прошедшее время
-	if dueAt.Before(now) {
+	// Не разрешаем выбирать прошедшее или уже наступившее время.
+	if !dueAt.After(now) {
 		return &model.BotResponse{
 			Text: "Это время уже прошло. Выбери другое.",
 			Menu: menu,
 		}, nil
 	}
 
-	// Получаем пользователя
 	user, err := s.users.GetByTelegramID(
 		ctx,
 		session.TelegramID,
@@ -592,7 +563,6 @@ func (s *TaskService) handleTime(
 		return nil, err
 	}
 
-	// Формируем готовую задачу
 	task := model.Task{
 		UserID:   user.ID,
 		Category: *session.Category,
@@ -601,16 +571,11 @@ func (s *TaskService) handleTime(
 		DueAt:    dueAt,
 	}
 
-	// Сохраняем задачу
-	if err := s.tasks.Create(
-		ctx,
-		&task,
-	); err != nil {
+	if err := s.tasks.Create(ctx, &task); err != nil {
 		return nil, err
 	}
 
-	// Удаляем временную сессию создания
-	if err := s.registrationTasks.Delete(
+	if err := s.sessions.Delete(
 		ctx,
 		session.TelegramID,
 	); err != nil {
@@ -619,10 +584,7 @@ func (s *TaskService) handleTime(
 
 	return &model.BotResponse{
 		Text: fmt.Sprintf(
-			"✅ <b>Задача добавлена!</b>\n\n"+
-				"📝 %s\n"+
-				"📅 %s\n"+
-				"🕐 %s",
+			"✅ <b>Задача добавлена!</b>\n\n📝 %s\n📅 %s\n🕐 %s",
 			*session.Title,
 			dueAt.Format("02.01.2006"),
 			dueAt.Format("15:04"),
@@ -644,8 +606,13 @@ func dateOnly(t time.Time) time.Time {
 	)
 }
 
-func parseTaskTime(value string) (int, int, error) {
+func sameDate(a, b time.Time) bool {
+	return a.Year() == b.Year() &&
+		a.Month() == b.Month() &&
+		a.Day() == b.Day()
+}
 
+func parseTaskTime(value string) (int, int, error) {
 	value = strings.TrimSpace(value)
 
 	if value == "24:00" {
@@ -662,6 +629,10 @@ func parseTaskTime(value string) (int, int, error) {
 
 	if hour < 7 {
 		return 0, 0, errors.New("time must be after 07:00")
+	}
+
+	if minute != 0 && minute != 30 {
+		return 0, 0, errors.New("time must be on a 30-minute interval")
 	}
 
 	return hour, minute, nil

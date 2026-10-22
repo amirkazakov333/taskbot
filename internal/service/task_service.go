@@ -284,6 +284,8 @@ func formatTasks(tasks []model.Task) string {
 		"📋 <b>Ваши задачи:</b>\n\n",
 	)
 
+	location := appLocation()
+
 	for i, task := range tasks {
 
 		var category string
@@ -297,6 +299,10 @@ func formatTasks(tasks []model.Task) string {
 			category = "🏠 Личное"
 		}
 
+		// Переводим время из PostgreSQL
+		// в часовой пояс Душанбе
+		dueAt := task.DueAt.In(location)
+
 		builder.WriteString(
 			fmt.Sprintf(
 				"%d. <b>%s</b>\n"+
@@ -305,7 +311,7 @@ func formatTasks(tasks []model.Task) string {
 				i+1,
 				task.Title,
 				category,
-				task.DueAt.Format("02.01.2006 15:04"),
+				dueAt.Format("02.01.2006 15:04"),
 			),
 		)
 	}

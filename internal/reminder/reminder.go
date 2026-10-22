@@ -202,10 +202,10 @@ func (w *Worker) send(
 	_, err := w.bot.SendMessage(
 		ctx,
 		&tgBot.SendMessageParams{
-			ChatID: reminder.TelegramID,
-			Text:   reminder.Text,
-
-			ParseMode: models.ParseModeHTML,
+			ChatID:      reminder.TelegramID,
+			Text:        reminder.Text,
+			ParseMode:   models.ParseModeHTML,
+			ReplyMarkup: taskActionKeyboard(reminder.TaskID),
 		},
 	)
 

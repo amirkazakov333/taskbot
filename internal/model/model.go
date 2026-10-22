@@ -2,39 +2,11 @@ package model
 
 import "time"
 
-type MenuType string
-
-type TaskCategory string
-
-type TaskStatus string
-
-type UserSessionType string
-
 const (
 	SessionTypeRegistration   UserSessionType = "registration"
 	SessionTypeTaskCreation   UserSessionType = "task_creation"
 	SessionTypeTaskReschedule UserSessionType = "task_reschedule"
 )
-
-type UserSession struct {
-	TelegramID  int64
-	SessionType UserSessionType
-
-	Username      *string
-	FirstName     string
-	LastName      string
-	PreferredName string
-
-	Category *TaskCategory
-	Title    *string
-	TaskDate *time.Time
-
-	TargetTaskID *int64
-
-	CurrentStep string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
 
 const (
 	MenuNone          MenuType = "none"
@@ -63,6 +35,34 @@ const (
 	ReminderTypeOverdue ReminderType = "overdue"
 )
 
+type MenuType string
+
+type TaskCategory string
+
+type TaskStatus string
+
+type UserSessionType string
+
+type UserSession struct {
+	TelegramID  int64
+	SessionType UserSessionType
+
+	Username      *string
+	FirstName     string
+	LastName      string
+	PreferredName string
+
+	Category *TaskCategory
+	Title    *string
+	TaskDate *time.Time
+
+	TargetTaskID *int64
+
+	CurrentStep string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type BotResponse struct {
 	Text string
 	Menu MenuType
@@ -75,17 +75,6 @@ type User struct {
 	FirstName     string
 	LastName      string
 	PreferredName string
-}
-
-type RegistrationSession struct {
-	TelegramID    int64
-	Username      *string
-	FirstName     string
-	LastName      string
-	PreferredName string
-	CurrentStep   string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
 }
 
 type Task struct {
@@ -101,16 +90,6 @@ type Task struct {
 	CompletedAt           *time.Time
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
-}
-
-type TaskCreationSession struct {
-	TelegramID  int64
-	Category    *TaskCategory
-	Title       *string
-	TaskDate    *time.Time
-	CurrentStep string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
 }
 
 type TaskReminder struct {

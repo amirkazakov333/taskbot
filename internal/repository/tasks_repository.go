@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"telegram-bot/internal/model"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,6 +26,26 @@ type TaskRepository interface {
 		userID int64,
 		category model.TaskCategory,
 	) ([]model.Task, error)
+
+	GetByIDAndUserID(
+		ctx context.Context,
+		taskID int64,
+		userID int64,
+	) (*model.Task, error)
+
+	UpdateStatusByUserID(
+		ctx context.Context,
+		taskID int64,
+		userID int64,
+		status model.TaskStatus,
+	) error
+
+	RescheduleByUserID(
+		ctx context.Context,
+		taskID int64,
+		userID int64,
+		dueAt time.Time,
+	) error
 }
 
 type TaskPostgresRepository struct {
@@ -215,4 +237,131 @@ func (r *TaskPostgresRepository) GetByUserIDAndCategory(
 	}
 
 	return tasks, nil
+}
+
+func (r *TaskPostgresRepository) GetByIDAndUserID(
+	ctx context.Context,
+	taskID int64,
+	userID int64,
+) (*model.Task, error) {
+	var task model.Task
+
+	query := `
+		SELECT
+			id,
+			user_id,
+			category,
+			title,
+			status,
+			due_at,
+			pre_reminder_sent,
+			due_reminder_sent,
+			last_overdue_reminder_at,
+			completed_at,
+			created_at,
+			updated_at
+		FROM tasks
+		WHERE id = $1
+		  AND user_id = $2
+	`
+
+	err := r.pool.QueryRow(
+		ctx,
+		query,
+		taskID,
+		userID,
+	).Scan(
+		&task.ID,
+		&task.UserID,
+		&task.Category,
+		&task.Title,
+		&task.Status,
+		&task.DueAt,
+		&task.PreReminderSent,
+		&task.DueReminderSent,
+		&task.LastOverdueReminderAt,
+		&task.CompletedAt,
+		&task.CreatedAt,
+		&task.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &task, nil
+}
+
+func (r *TaskPostgresRepository) UpdateStatusByUserID(
+	ctx context.Context,
+	taskID int64,
+	userID int64,
+	status model.TaskStatus,
+) error {
+	query := `
+		UPDATE tasks
+		SET
+			status = $3,
+			completed_at = CASE
+				WHEN $3 = 'done' THEN CURRENT_TIMESTAMP
+				ELSE NULL
+			END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+		  AND user_id = $2
+		  AND status = 'todo'
+	`
+
+	tag, err := r.pool.Exec(
+		ctx,
+		query,
+		taskID,
+		userID,
+		status,
+	)
+	if err != nil {
+		return err
+	}
+
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+
+	return nil
+}
+
+func (r *TaskPostgresRepository) RescheduleByUserID(
+	ctx context.Context,
+	taskID int64,
+	userID int64,
+	dueAt time.Time,
+) error {
+	query := `
+		UPDATE tasks
+		SET
+			due_at = $3,
+			pre_reminder_sent = FALSE,
+			due_reminder_sent = FALSE,
+			last_overdue_reminder_at = NULL,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+		  AND user_id = $2
+		  AND status = 'todo'
+	`
+
+	tag, err := r.pool.Exec(
+		ctx,
+		query,
+		taskID,
+		userID,
+		dueAt,
+	)
+	if err != nil {
+		return err
+	}
+
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+
+	return nil
 }

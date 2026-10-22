@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"telegram-bot/internal/model"
@@ -243,6 +245,116 @@ func (h *TaskHandler) Message(
 		update.Message.Chat.ID,
 		response,
 	)
+}
+
+func (h *TaskHandler) HandleTaskCallback(
+	ctx context.Context,
+	b *tgBot.Bot,
+	update *models.Update,
+) {
+	if update.CallbackQuery == nil {
+		return
+	}
+
+	callback := update.CallbackQuery
+
+	// Сразу сообщаем Telegram, что получили нажатие.
+	_, err := b.AnswerCallbackQuery(
+		ctx,
+		&tgBot.AnswerCallbackQueryParams{
+			CallbackQueryID: callback.ID,
+		},
+	)
+	if err != nil {
+		log.Printf("answer callback query error: %v", err)
+	}
+
+	// Наши кнопки прикреплены к обычным сообщениям бота.
+	if callback.Message.Message == nil {
+		log.Println("callback has no accessible message")
+		return
+	}
+
+	chatID := callback.Message.Message.Chat.ID
+
+	// Формат: task:done:42
+	parts := strings.Split(callback.Data, ":")
+
+	if len(parts) != 3 || parts[0] != "task" {
+		sendResponse(
+			ctx,
+			b,
+			chatID,
+			&model.BotResponse{
+				Text: "⚠️ Не удалось определить действие.",
+				Menu: model.MenuMain,
+			},
+		)
+		return
+	}
+
+	taskID, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil || taskID <= 0 {
+		sendResponse(
+			ctx,
+			b,
+			chatID,
+			&model.BotResponse{
+				Text: "⚠️ Некорректный идентификатор задачи.",
+				Menu: model.MenuMain,
+			},
+		)
+		return
+	}
+
+	telegramID := callback.From.ID
+
+	var response *model.BotResponse
+
+	switch parts[1] {
+	case "done":
+		response, err = h.taskService.CompleteTask(
+			ctx,
+			telegramID,
+			taskID,
+		)
+
+	case "cancel":
+		response, err = h.taskService.CancelTask(
+			ctx,
+			telegramID,
+			taskID,
+		)
+
+	case "reschedule":
+		response, err = h.taskService.StartRescheduleTask(
+			ctx,
+			telegramID,
+			taskID,
+		)
+
+	default:
+		response = &model.BotResponse{
+			Text: "⚠️ Неизвестное действие с задачей.",
+			Menu: model.MenuMain,
+		}
+	}
+
+	if err != nil {
+		log.Printf(
+			"task callback error: action=%s task_id=%d: %v",
+			parts[1],
+			taskID,
+			err,
+		)
+
+		response = &model.BotResponse{
+			Text: "⚠️ Не удалось обработать действие. Попробуй ещё раз.",
+			Menu: model.MenuMain,
+		}
+	}
+
+	sendResponse(ctx, b, chatID, response)
 }
 
 func sendResponse(

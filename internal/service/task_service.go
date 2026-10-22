@@ -263,6 +263,170 @@ func (s *TaskService) HandleTaskMessage(
 	}
 }
 
+func (s *TaskService) CompleteTask(
+	ctx context.Context,
+	telegramID int64,
+	taskID int64,
+) (*model.BotResponse, error) {
+	return s.changeTaskStatus(
+		ctx,
+		telegramID,
+		taskID,
+		model.TaskStatusDone,
+		"✅ Задача отмечена как выполненная.",
+	)
+}
+
+func (s *TaskService) CancelTask(
+	ctx context.Context,
+	telegramID int64,
+	taskID int64,
+) (*model.BotResponse, error) {
+	return s.changeTaskStatus(
+		ctx,
+		telegramID,
+		taskID,
+		model.TaskStatusCancelled,
+		"❌ Задача отменена.",
+	)
+}
+
+func (s *TaskService) changeTaskStatus(
+	ctx context.Context,
+	telegramID int64,
+	taskID int64,
+	status model.TaskStatus,
+	message string,
+) (*model.BotResponse, error) {
+
+	// Получаем пользователя, который нажал кнопку.
+	user, err := s.users.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Меняем статус только у его активной задачи.
+	err = s.tasks.UpdateStatusByUserID(
+		ctx,
+		taskID,
+		user.ID,
+		status,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return &model.BotResponse{
+			Text: "Эта задача не найдена или уже не активна.",
+			Menu: model.MenuMain,
+		}, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.BotResponse{
+		Text: message,
+		Menu: model.MenuMain,
+	}, nil
+}
+
+func (s *TaskService) StartRescheduleTask(
+	ctx context.Context,
+	telegramID int64,
+	taskID int64,
+) (*model.BotResponse, error) {
+
+	// 1. Получаем пользователя.
+	user, err := s.users.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Проверяем, что задача принадлежит пользователю
+	// и действительно существует.
+	task, err := s.tasks.GetByIDAndUserID(
+		ctx,
+		taskID,
+		user.ID,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return &model.BotResponse{
+			Text: "Задача не найдена.",
+			Menu: model.MenuMain,
+		}, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if task.Status != model.TaskStatusTodo {
+		return &model.BotResponse{
+			Text: "Переносить можно только активные задачи.",
+			Menu: model.MenuMain,
+		}, nil
+	}
+
+	// 3. Проверяем, нет ли уже активного процесса.
+	session, err := s.sessions.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
+
+	if err == nil {
+		// Если пользователь уже переносит эту задачу,
+		// разрешаем продолжить текущий процесс.
+		if session.SessionType == model.SessionTypeTaskReschedule &&
+			session.TargetTaskID != nil &&
+			*session.TargetTaskID == taskID {
+			return taskCreationPrompt(session.CurrentStep), nil
+		}
+
+		return &model.BotResponse{
+			Text: "У тебя уже есть незавершённый процесс. Сначала заверши его.",
+			Menu: model.MenuMain,
+		}, nil
+	}
+
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
+	// 4. Создаём сессию переноса.
+	targetTaskID := taskID
+
+	newSession := model.UserSession{
+		TelegramID:   telegramID,
+		SessionType:  model.SessionTypeTaskReschedule,
+		TargetTaskID: &targetTaskID,
+		CurrentStep:  TaskStepAwaitDate,
+	}
+
+	if err := s.sessions.Create(
+		ctx,
+		newSession,
+	); err != nil {
+		return nil, err
+	}
+
+	return &model.BotResponse{
+		Text: fmt.Sprintf(
+			"🔄 <b>Перенос задачи</b>\n\n"+
+				"📝 %s\n\n"+
+				"📅 Выбери новую дату выполнения.",
+			task.Title,
+		),
+		Menu: model.MenuTaskDate,
+	}, nil
+}
+
 func taskCreationPrompt(step string) *model.BotResponse {
 	switch step {
 	case TaskStepAwaitCategory:

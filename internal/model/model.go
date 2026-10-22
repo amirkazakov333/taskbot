@@ -87,15 +87,16 @@ type TaskCreationSession struct {
 type TaskReminder struct {
 	TaskID     int64
 	TelegramID int64
-	Title      string
-	DueAt      time.Time
+
+	Category TaskCategory
+	Title    string
+	DueAt    time.Time
 
 	PreReminderSent bool
 	DueReminderSent bool
 
 	LastOverdueReminderAt *time.Time
 }
-
 type ReminderType string
 
 type ReminderMessage struct {

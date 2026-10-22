@@ -66,6 +66,7 @@ func (r *ReminderPostgresRepository) GetPreReminderTasks(
 		SELECT
 			t.id,
 			u.telegram_id,
+			t.category,
 			t.title,
 			t.due_at,
 			t.pre_reminder_sent,
@@ -100,6 +101,7 @@ func (r *ReminderPostgresRepository) GetPreReminderTasks(
 		if err := rows.Scan(
 			&reminder.TaskID,
 			&reminder.TelegramID,
+			&reminder.Category,
 			&reminder.Title,
 			&reminder.DueAt,
 			&reminder.PreReminderSent,
@@ -128,6 +130,7 @@ func (r *ReminderPostgresRepository) GetDueReminderTasks(
 		SELECT
 			t.id,
 			u.telegram_id,
+			t.category,
 			t.title,
 			t.due_at,
 			t.pre_reminder_sent,
@@ -160,6 +163,7 @@ func (r *ReminderPostgresRepository) GetDueReminderTasks(
 		if err := rows.Scan(
 			&reminder.TaskID,
 			&reminder.TelegramID,
+			&reminder.Category,
 			&reminder.Title,
 			&reminder.DueAt,
 			&reminder.PreReminderSent,
@@ -188,6 +192,7 @@ func (r *ReminderPostgresRepository) GetOverdueReminderTasks(
 		SELECT
 			t.id,
 			u.telegram_id,
+			t.category,
 			t.title,
 			t.due_at,
 			t.pre_reminder_sent,
@@ -224,6 +229,7 @@ func (r *ReminderPostgresRepository) GetOverdueReminderTasks(
 		if err := rows.Scan(
 			&reminder.TaskID,
 			&reminder.TelegramID,
+			&reminder.Category,
 			&reminder.Title,
 			&reminder.DueAt,
 			&reminder.PreReminderSent,

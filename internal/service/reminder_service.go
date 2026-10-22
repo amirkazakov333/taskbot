@@ -48,6 +48,8 @@ func (s *ReminderService) GetReminders(
 
 	for _, task := range preTasks {
 
+		category := reminderCategory(task.Category)
+
 		messages = append(
 			messages,
 			model.ReminderMessage{
@@ -56,16 +58,16 @@ func (s *ReminderService) GetReminders(
 				Type:       model.ReminderTypePre,
 				Text: fmt.Sprintf(
 					"🔔 <b>Напоминание</b>\n\n"+
-						"Через 30 минут:\n"+
+						"%s\n"+
 						"📝 %s\n"+
-						"🕐 %s",
+						"🕐 Через 30 минут — %s",
+					category,
 					task.Title,
 					task.DueAt.Format("15:04"),
 				),
 			},
 		)
 	}
-
 	// =========================
 	// Просроченные
 	// =========================
@@ -84,6 +86,8 @@ func (s *ReminderService) GetReminders(
 
 		for _, task := range overdueTasks {
 
+			category := reminderCategory(task.Category)
+
 			messages = append(
 				messages,
 				model.ReminderMessage{
@@ -91,9 +95,11 @@ func (s *ReminderService) GetReminders(
 					TelegramID: task.TelegramID,
 					Type:       model.ReminderTypeOverdue,
 					Text: fmt.Sprintf(
-						"⚠️ <b>Задача не выполнена</b>\n\n"+
+						"⚠️ <b>Задача просрочена</b>\n\n"+
+							"%s\n"+
 							"📝 %s\n"+
 							"🕐 Срок был: %s",
+						category,
 						task.Title,
 						task.DueAt.Format("15:04"),
 					),
@@ -118,6 +124,8 @@ func (s *ReminderService) GetReminders(
 
 	for _, task := range dueTasks {
 
+		category := reminderCategory(task.Category)
+
 		messages = append(
 			messages,
 			model.ReminderMessage{
@@ -126,8 +134,12 @@ func (s *ReminderService) GetReminders(
 				Type:       model.ReminderTypeDue,
 				Text: fmt.Sprintf(
 					"⏰ <b>Время выполнить задачу</b>\n\n"+
-						"📝 %s",
+						"%s\n"+
+						"📝 %s\n"+
+						"🕐 %s",
+					category,
 					task.Title,
+					task.DueAt.Format("15:04"),
 				),
 			},
 		)
@@ -171,5 +183,22 @@ func (s *ReminderService) MarkSent(
 			"unknown reminder type: %s",
 			message.Type,
 		)
+	}
+}
+
+func reminderCategory(
+	category model.TaskCategory,
+) string {
+
+	switch category {
+
+	case model.TaskCategoryWork:
+		return "💼 Работа"
+
+	case model.TaskCategoryPersonal:
+		return "🏠 Личное"
+
+	default:
+		return ""
 	}
 }

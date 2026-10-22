@@ -273,7 +273,10 @@ func sendResponse(
 		params.ReplyMarkup = taskDateMenu()
 
 	case model.MenuTaskTime:
-		params.ReplyMarkup = taskTimeMenu()
+		params.ReplyMarkup = taskTimeMenu(false)
+
+	case model.MenuTaskTimeToday:
+		params.ReplyMarkup = taskTimeMenu(true)
 
 	case model.MenuTaskFilter:
 		params.ReplyMarkup = taskFilterMenu()
@@ -319,19 +322,22 @@ func taskDateMenu() *models.ReplyKeyboardMarkup {
 	}
 }
 
-func taskTimeMenu() *models.ReplyKeyboardMarkup {
-
+func taskTimeMenu(fromCurrentTime bool) *models.ReplyKeyboardMarkup {
 	var keyboard [][]models.KeyboardButton
 	var row []models.KeyboardButton
 
-	now := time.Now()
+	startMinutes := 7 * 60
 
-	currentMinutes := now.Hour()*60 + now.Minute()
+	if fromCurrentTime {
+		now := time.Now()
 
-	startMinutes := (currentMinutes/30 + 1) * 30
+		currentMinutes := now.Hour()*60 + now.Minute()
 
-	if startMinutes < 7*60 {
-		startMinutes = 7 * 60
+		startMinutes = (currentMinutes/30 + 1) * 30
+
+		if startMinutes < 7*60 {
+			startMinutes = 7 * 60
+		}
 	}
 
 	for totalMinutes := startMinutes; totalMinutes <= 24*60; totalMinutes += 30 {

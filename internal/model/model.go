@@ -9,12 +9,13 @@ type TaskCategory string
 type TaskStatus string
 
 const (
-	MenuNone         MenuType = "none"
-	MenuMain         MenuType = "main"
-	MenuTaskCategory MenuType = "task_category"
-	MenuTaskDate     MenuType = "task_date"
-	MenuTaskTime     MenuType = "task_time"
-	MenuTaskFilter   MenuType = "task_filter"
+	MenuNone          MenuType = "none"
+	MenuMain          MenuType = "main"
+	MenuTaskCategory  MenuType = "task_category"
+	MenuTaskDate      MenuType = "task_date"
+	MenuTaskTime      MenuType = "task_time"
+	MenuTaskFilter    MenuType = "task_filter"
+	MenuTaskTimeToday MenuType = "task_time_today"
 )
 
 const (

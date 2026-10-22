@@ -447,9 +447,15 @@ func (s *TaskService) handleCustomDate(
 		return nil, err
 	}
 
+	menu := model.MenuTaskTime
+
+	if taskDate.Equal(today) {
+		menu = model.MenuTaskTimeToday
+	}
+
 	return &model.BotResponse{
-		Text: "🕐 <b>Выбери время задачи</b>\n\nДоступное время: с 07:00 до 24:00.",
-		Menu: model.MenuTaskTime,
+		Text: "🕐 <b>Выбери время задачи</b>",
+		Menu: menu,
 	}, nil
 }
 

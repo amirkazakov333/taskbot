@@ -110,5 +110,3 @@ CREATE INDEX IF NOT EXISTS idx_tasks_user_category_status
 CREATE INDEX IF NOT EXISTS idx_tasks_due_todo
     ON tasks (due_at)
     WHERE status = 'todo';
-
-CHECK (status IN ('todo', 'done', 'cancelled'))

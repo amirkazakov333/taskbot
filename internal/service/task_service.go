@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -307,6 +308,14 @@ func (s *TaskService) changeTaskStatus(
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf(
+		"CHANGE STATUS: telegram_id=%d user_id=%d task_id=%d status=%s",
+		telegramID,
+		user.ID,
+		taskID,
+		status,
+	)
 
 	// Меняем статус только у его активной задачи.
 	err = s.tasks.UpdateStatusByUserID(

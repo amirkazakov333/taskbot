@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"telegram-bot/internal/model"
@@ -319,8 +320,23 @@ func (r *TaskPostgresRepository) UpdateStatusByUserID(
 		status,
 	)
 	if err != nil {
+		log.Printf(
+			"UPDATE TASK ERROR: task_id=%d user_id=%d status=%s err=%v",
+			taskID,
+			userID,
+			status,
+			err,
+		)
 		return err
 	}
+
+	log.Printf(
+		"UPDATE TASK RESULT: task_id=%d user_id=%d status=%s affected=%d",
+		taskID,
+		userID,
+		status,
+		tag.RowsAffected(),
+	)
 
 	if tag.RowsAffected() == 0 {
 		return pgx.ErrNoRows

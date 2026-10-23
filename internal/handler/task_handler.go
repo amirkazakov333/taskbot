@@ -309,6 +309,14 @@ func (h *TaskHandler) HandleTaskCallback(
 
 	telegramID := callback.From.ID
 
+	log.Printf(
+		"CALLBACK: data=%s telegram_id=%d task_id=%d action=%s",
+		callback.Data,
+		telegramID,
+		taskID,
+		parts[1],
+	)
+
 	var response *model.BotResponse
 
 	switch parts[1] {

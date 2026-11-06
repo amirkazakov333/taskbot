@@ -186,6 +186,14 @@ func (s *ReminderService) MarkSent(
 	}
 }
 
+func (s *ReminderService) ChangeTaskStatus(
+	ctx context.Context,
+	telegramID int32,
+	status model.TaskStatus,
+) {
+
+}
+
 func reminderCategory(
 	category model.TaskCategory,
 ) string {

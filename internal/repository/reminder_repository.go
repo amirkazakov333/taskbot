@@ -41,6 +41,11 @@ type ReminderRepository interface {
 		taskID int64,
 		sentAt time.Time,
 	) error
+
+	ChangeTaskStatus(
+		ctx context.Context,
+
+	)
 }
 
 type ReminderPostgresRepository struct {

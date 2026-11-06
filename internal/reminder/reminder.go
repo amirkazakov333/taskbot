@@ -2,7 +2,9 @@ package reminder
 
 import (
 	"context"
+	"errors"
 	"log"
+	"strconv"
 	"time"
 
 	"telegram-bot/internal/model"
@@ -162,9 +164,13 @@ func (w *Worker) check(
 
 	for _, reminder := range reminders {
 
-		err := w.send(
+		err := w.sendReminders(
 			ctx,
 			reminder,
+			model.TaskReminderNotification{
+				Text:   reminder.Text,
+				TaskID: reminder.TaskID,
+			},
 		)
 
 		if err != nil {
@@ -194,20 +200,58 @@ func (w *Worker) check(
 	}
 }
 
-func (w *Worker) send(
+func (w *Worker) sendReminders(
 	ctx context.Context,
 	reminder model.ReminderMessage,
+	notification model.TaskReminderNotification,
 ) error {
 
-	_, err := w.bot.SendMessage(
-		ctx,
-		&tgBot.SendMessageParams{
-			ChatID:      reminder.TelegramID,
-			Text:        reminder.Text,
-			ParseMode:   models.ParseModeHTML,
-			ReplyMarkup: taskActionKeyboard(reminder.TaskID),
-		},
-	)
+	if notification.TaskID <= 0 {
+		log.Println("invalid task ID in reminder notification")
+		return errors.New("no such task")
+	}
+
+	params := &tgBot.SendMessageParams{
+		ChatID:    reminder.TelegramID,
+		Text:      notification.Text,
+		ParseMode: models.ParseModeHTML,
+		ReplyMarkup: taskReminderKeyboard(
+			notification.TaskID,
+		),
+	}
+
+	_, err := w.bot.SendMessage(ctx, params)
+	if err != nil {
+		log.Printf("send task reminder error: %v", err)
+	}
 
 	return err
+}
+
+func taskReminderKeyboard(
+	taskID int64,
+) *models.InlineKeyboardMarkup {
+
+	id := strconv.FormatInt(taskID, 10)
+
+	return &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{
+			{
+				{
+					Text:         "✅ Выполнено",
+					CallbackData: "task:done:" + id,
+				},
+				{
+					Text:         "❌ Отменить",
+					CallbackData: "task:cancel:" + id,
+				},
+			},
+			{
+				{
+					Text:         "🔄 Перенести",
+					CallbackData: "task:reschedule:" + id,
+				},
+			},
+		},
+	}
 }

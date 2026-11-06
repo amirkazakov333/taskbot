@@ -23,7 +23,6 @@ func NewMessageRouter(
 	taskHandler *TaskHandler,
 	taskService *service.TaskService,
 ) *MessageRouter {
-
 	return &MessageRouter{
 		userHandler: userHandler,
 		taskHandler: taskHandler,

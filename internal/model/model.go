@@ -68,6 +68,11 @@ type BotResponse struct {
 	Menu MenuType
 }
 
+type TaskReminderNotification struct {
+	Text   string
+	TaskID int64
+}
+
 type User struct {
 	ID            int64
 	TelegramID    int64
@@ -105,6 +110,7 @@ type TaskReminder struct {
 
 	LastOverdueReminderAt *time.Time
 }
+
 type ReminderType string
 
 type ReminderMessage struct {

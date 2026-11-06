@@ -134,7 +134,7 @@ func main() {
 
 	go reminderWorker.Start(appCtx)
 
-	log.Println("Telegram-бот запущен")
-
 	tgBot.Start(appCtx)
+
+	log.Println("Telegram-бот запущен")
 }

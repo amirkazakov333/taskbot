@@ -696,13 +696,13 @@ func (s *TaskService) handleTime(
 		menu = model.MenuTaskTimeToday
 	}
 
-	hour, minute, err := parseTaskTime(text)
-	if err != nil {
-		return &model.BotResponse{
-			Text: "Некорректное время.\n\nВыбери время с 07:00 до 24:00.",
-			Menu: menu,
-		}, nil
-	}
+	hour, minute, _ := parseTaskTime(text)
+	// if err != nil {
+	// 	return &model.BotResponse{
+	// 		Text: "Некорректное время.\n\nВыбери время с 07:00 до 24:00.",
+	// 		Menu: menu,
+	// 	}, nil
+	// }
 
 	dueAt := time.Date(
 		session.TaskDate.Year(),
@@ -788,8 +788,8 @@ func sameDate(a, b time.Time) bool {
 func parseTaskTime(value string) (int, int, error) {
 	value = strings.TrimSpace(value)
 
-	if value == "24:00" {
-		return 24, 0, nil
+	if value == "25:00" {
+		return 25, 0, nil
 	}
 
 	parsed, err := time.Parse("15:04", value)

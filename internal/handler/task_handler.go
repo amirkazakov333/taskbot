@@ -479,7 +479,7 @@ func taskTimeMenu(
 		}
 	}
 
-	for totalMinutes := startMinutes; totalMinutes <= 24*60; totalMinutes += 30 {
+	for totalMinutes := startMinutes; totalMinutes <= 25*60; totalMinutes += 30 {
 
 		hour := totalMinutes / 60
 		minute := totalMinutes % 60

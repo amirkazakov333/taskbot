@@ -215,10 +215,9 @@ func (w *Worker) sendReminders(
 		ChatID:    reminder.TelegramID,
 		Text:      notification.Text,
 		ParseMode: models.ParseModeHTML,
-		ReplyMarkup: taskReminderKeyboard(
-			notification.TaskID,
-		),
 	}
+
+	params.ReplyMarkup = TaskReminderKeyboard(notification.TaskID)
 
 	_, err := w.bot.SendMessage(ctx, params)
 	if err != nil {
@@ -228,7 +227,7 @@ func (w *Worker) sendReminders(
 	return err
 }
 
-func taskReminderKeyboard(
+func TaskReminderKeyboard(
 	taskID int64,
 ) *models.InlineKeyboardMarkup {
 

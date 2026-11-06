@@ -81,9 +81,14 @@ func main() {
 		taskService,
 	)
 
+	reminderHandler := handler.NewReminderHandler(
+		reminderService,
+	)
+
 	messageRouter := handler.NewMessageRouter(
 		userHandler,
 		taskHandler,
+		reminderHandler,
 		taskService,
 	)
 

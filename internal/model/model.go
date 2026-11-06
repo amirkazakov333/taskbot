@@ -9,13 +9,14 @@ const (
 )
 
 const (
-	MenuNone          MenuType = "none"
-	MenuMain          MenuType = "main"
-	MenuTaskCategory  MenuType = "task_category"
-	MenuTaskDate      MenuType = "task_date"
-	MenuTaskTime      MenuType = "task_time"
-	MenuTaskFilter    MenuType = "task_filter"
-	MenuTaskTimeToday MenuType = "task_time_today"
+	MenuNone             MenuType = "none"
+	MenuMain             MenuType = "main"
+	MenuTaskCategory     MenuType = "task_category"
+	MenuTaskDate         MenuType = "task_date"
+	MenuTaskTime         MenuType = "task_time"
+	MenuTaskFilter       MenuType = "task_filter"
+	MenuTaskTimeToday    MenuType = "task_time_today"
+	MenuTaskChangeStatus MenuType = "task_cahnge_status"
 )
 
 const (
@@ -70,6 +71,7 @@ type BotResponse struct {
 
 type TaskReminderNotification struct {
 	Text   string
+	Menu   MenuType
 	TaskID int64
 }
 

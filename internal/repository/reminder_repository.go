@@ -44,8 +44,9 @@ type ReminderRepository interface {
 
 	ChangeTaskStatus(
 		ctx context.Context,
-
-	)
+		taskID int64,
+		status model.TaskStatus,
+	) error
 }
 
 type ReminderPostgresRepository struct {
@@ -317,6 +318,29 @@ func (r *ReminderPostgresRepository) UpdateLastOverdueReminder(
 		query,
 		taskID,
 		sentAt,
+	)
+
+	return err
+}
+
+func (r *ReminderPostgresRepository) ChangeTaskStatus(
+	ctx context.Context,
+	taskID int64,
+	status model.TaskStatus,
+) error {
+	query := `
+		UPDATE tasks
+		SET
+			status = $1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`
+
+	_, err := r.pool.Exec(
+		ctx,
+		query,
+		status,
+		taskID,
 	)
 
 	return err

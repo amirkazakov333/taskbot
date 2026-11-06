@@ -13,20 +13,23 @@ import (
 )
 
 type MessageRouter struct {
-	userHandler *UserHandler
-	taskHandler *TaskHandler
-	taskService *service.TaskService
+	userHandler     *UserHandler
+	taskHandler     *TaskHandler
+	reminderHandler *ReminderHandler
+	taskService     *service.TaskService
 }
 
 func NewMessageRouter(
 	userHandler *UserHandler,
 	taskHandler *TaskHandler,
+	reminderHandler *ReminderHandler,
 	taskService *service.TaskService,
 ) *MessageRouter {
 	return &MessageRouter{
-		userHandler: userHandler,
-		taskHandler: taskHandler,
-		taskService: taskService,
+		userHandler:     userHandler,
+		taskHandler:     taskHandler,
+		reminderHandler: reminderHandler,
+		taskService:     taskService,
 	}
 }
 
@@ -102,6 +105,17 @@ func (r *MessageRouter) Message(
 			update,
 		)
 		return
+
+	// =========================
+	// Изменение/перенос выполнение задачи
+	// =========================
+
+	case ButtonTaskDone:
+		r.reminderHandler.ChangeTaskStatusToDone(
+			ctx,
+			b,
+			update,
+		)
 	}
 
 	// =========================

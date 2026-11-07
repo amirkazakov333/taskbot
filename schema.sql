@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS user_sessions (
             session_type IN (
                 'registration',
                 'task_creation',
-                'task_reschedule'
+                'task_reschedule',
+                'settings'
             )
         ),
 

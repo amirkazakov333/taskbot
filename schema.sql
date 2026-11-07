@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
             OR category IN ('work', 'personal')
         ),
 
-    CONSTRAINT user_sessions_target_task_check
+   CONSTRAINT user_sessions_target_task_check
         CHECK (
             (
                 session_type = 'task_reschedule'
@@ -96,7 +96,8 @@ CREATE TABLE IF NOT EXISTS user_sessions (
             (
                 session_type IN (
                     'registration',
-                    'task_creation'
+                    'task_creation',
+                    'settings'
                 )
                 AND target_task_id IS NULL
             )

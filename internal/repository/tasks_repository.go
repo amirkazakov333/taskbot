@@ -299,18 +299,20 @@ func (r *TaskPostgresRepository) UpdateStatusByUserID(
 	status model.TaskStatus,
 ) error {
 	query := `
-		UPDATE tasks
-		SET
-			status = $3,
-			completed_at = CASE
-				WHEN $3 = 'done' THEN CURRENT_TIMESTAMP
-				ELSE NULL
-			END,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
-		  AND user_id = $2
-		  AND status = 'todo'
-	`
+        UPDATE tasks
+        SET
+            status = $3,
+            completed_at = CASE
+                WHEN $4 THEN CURRENT_TIMESTAMP
+                ELSE NULL
+            END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+          AND user_id = $2
+          AND status = 'todo'
+    `
+
+	isDone := status == "done"
 
 	tag, err := r.pool.Exec(
 		ctx,
@@ -318,6 +320,7 @@ func (r *TaskPostgresRepository) UpdateStatusByUserID(
 		taskID,
 		userID,
 		status,
+		isDone,
 	)
 	if err != nil {
 		log.Printf(

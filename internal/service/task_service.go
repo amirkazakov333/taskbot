@@ -226,15 +226,8 @@ func (s *TaskService) HandleTaskMessage(
 		return nil, err
 	}
 
-	// Этот обработчик работает  при создании задачи или переноса задачи.
+	// Этот обработчик работает  при создании задачи.
 	if session.SessionType != model.SessionTypeTaskCreation {
-		return &model.BotResponse{
-			Text: "Сейчас у тебя выполняется другой процесс. Сначала заверши его.",
-			Menu: model.MenuMain,
-		}, nil
-	}
-
-	if session.SessionType != model.SessionTypeTaskReschedule {
 		return &model.BotResponse{
 			Text: "Сейчас у тебя выполняется другой процесс. Сначала заверши его.",
 			Menu: model.MenuMain,

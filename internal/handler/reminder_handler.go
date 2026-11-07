@@ -14,12 +14,6 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-const (
-	ButtonTaskDone      = "✅ Выполнено"
-	ButtonTaskCancelled = "❌ Отменить задачу"
-	ButtonTaskTransfer  = "🔄 Перенести задачу"
-)
-
 type ReminderHandler struct {
 	reminderService *service.ReminderService
 }

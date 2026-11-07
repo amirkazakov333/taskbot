@@ -226,8 +226,15 @@ func (s *TaskService) HandleTaskMessage(
 		return nil, err
 	}
 
-	// Этот обработчик работает только при создании задачи.
+	// Этот обработчик работает  при создании задачи или переноса задачи.
 	if session.SessionType != model.SessionTypeTaskCreation {
+		return &model.BotResponse{
+			Text: "Сейчас у тебя выполняется другой процесс. Сначала заверши его.",
+			Menu: model.MenuMain,
+		}, nil
+	}
+
+	if session.SessionType != model.SessionTypeTaskReschedule {
 		return &model.BotResponse{
 			Text: "Сейчас у тебя выполняется другой процесс. Сначала заверши его.",
 			Menu: model.MenuMain,
@@ -755,15 +762,32 @@ func (s *TaskService) handleTime(
 		return nil, err
 	}
 
-	return &model.BotResponse{
-		Text: fmt.Sprintf(
-			"✅ <b>Задача добавлена!</b>\n\n📝 %s\n📅 %s\n🕐 %s",
-			*session.Title,
-			dueAt.Format("02.01.2006"),
-			dueAt.Format("15:04"),
-		),
-		Menu: model.MenuMain,
-	}, nil
+	switch session.SessionType {
+
+	case model.SessionTypeTaskCreation:
+		return &model.BotResponse{
+			Text: fmt.Sprintf(
+				"✅ <b>Задача добавлена!</b>\n\n📝 %s\n📅 %s\n🕐 %s",
+				*session.Title,
+				dueAt.Format("02.01.2006"),
+				dueAt.Format("15:04"),
+			),
+			Menu: model.MenuMain,
+		}, nil
+
+	case model.SessionTypeTaskReschedule:
+		return &model.BotResponse{
+			Text: fmt.Sprintf(
+				"✅ <b>Задача добавлена!</b>\n\n📝 %s\n📅 %s\n🕐 %s",
+				*session.Title,
+				dueAt.Format("02.01.2006"),
+				dueAt.Format("15:04"),
+			),
+			Menu: model.MenuMain,
+		}, nil
+	}
+
+	return nil, err
 }
 
 func dateOnly(t time.Time) time.Time {

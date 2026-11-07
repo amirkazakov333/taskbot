@@ -117,12 +117,12 @@ func main() {
 		userHandler.StartHandler,
 	)
 
-	// tgBot.RegisterHandler(
-	// 	tgbot.HandlerTypeCallbackQueryData,
-	// 	"task:",
-	// 	tgbot.MatchTypePrefix,
-	// 	taskHandler.HandleTaskCallback,
-	// )
+	tgBot.RegisterHandler(
+		tgbot.HandlerTypeCallbackQueryData,
+		"task:",
+		tgbot.MatchTypePrefix,
+		taskHandler.HandleTaskCallback,
+	)
 
 	// Все остальные текстовые сообщения идут через Router.
 	tgBot.RegisterHandler(

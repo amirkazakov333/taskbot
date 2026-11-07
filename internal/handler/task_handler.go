@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"telegram-bot/internal/model"
@@ -17,6 +19,12 @@ const (
 	ButtonWorkTasks     = "💼 Рабочие"
 	ButtonPersonalTasks = "🏠 Личные"
 	ButtonAllTasks      = "📋 Все задачи"
+)
+
+const (
+	ButtonTaskDone      = "✅ Выполнено"
+	ButtonTaskCancelled = "❌ Отменить задачу"
+	ButtonTaskTransfer  = "🔄 Перенести задачу"
 )
 
 type TaskHandler struct {
@@ -245,123 +253,124 @@ func (h *TaskHandler) Message(
 	)
 }
 
-// func (h *TaskHandler) HandleTaskCallback(
-// 	ctx context.Context,
-// 	b *tgBot.Bot,
-// 	update *models.Update,
-// ) {
-// 	if update.CallbackQuery == nil {
-// 		return
-// 	}
+func (h *TaskHandler) HandleTaskCallback(
+	ctx context.Context,
+	b *tgBot.Bot,
+	update *models.Update,
+) {
+	if update.CallbackQuery == nil {
+		return
+	}
 
-// 	callback := update.CallbackQuery
+	callback := update.CallbackQuery
 
-// 	// Сразу сообщаем Telegram, что получили нажатие.
-// 	_, err := b.AnswerCallbackQuery(
-// 		ctx,
-// 		&tgBot.AnswerCallbackQueryParams{
-// 			CallbackQueryID: callback.ID,
-// 		},
-// 	)
-// 	if err != nil {
-// 		log.Printf("answer callback query error: %v", err)
-// 	}
+	// Сразу сообщаем Telegram, что получили нажатие.
+	_, err := b.AnswerCallbackQuery(
+		ctx,
+		&tgBot.AnswerCallbackQueryParams{
+			CallbackQueryID: callback.ID,
+		},
+	)
 
-// 	// Наши кнопки прикреплены к обычным сообщениям бота.
-// 	if callback.Message.Message == nil {
-// 		log.Println("callback has no accessible message")
-// 		return
-// 	}
+	if err != nil {
+		log.Printf("answer callback query error: %v", err)
+	}
 
-// 	chatID := callback.Message.Message.Chat.ID
+	// Наши кнопки прикреплены к обычным сообщениям бота.
+	if callback.Message.Message == nil {
+		log.Println("callback has no accessible message")
+		return
+	}
 
-// 	// Формат: task:done:42
-// 	parts := strings.Split(callback.Data, ":")
+	chatID := callback.Message.Message.Chat.ID
 
-// 	if len(parts) != 3 || parts[0] != "task" {
-// 		sendResponse(
-// 			ctx,
-// 			b,
-// 			chatID,
-// 			&model.BotResponse{
-// 				Text: "⚠️ Не удалось определить действие.",
-// 				Menu: model.MenuMain,
-// 			},
-// 		)
-// 		return
-// 	}
+	// Формат: task:done:42
+	parts := strings.Split(callback.Data, ":")
 
-// 	taskID, err := strconv.ParseInt(parts[2], 10, 64)
-// 	if err != nil || taskID <= 0 {
-// 		sendResponse(
-// 			ctx,
-// 			b,
-// 			chatID,
-// 			&model.BotResponse{
-// 				Text: "⚠️ Некорректный идентификатор задачи.",
-// 				Menu: model.MenuMain,
-// 			},
-// 		)
-// 		return
-// 	}
+	if len(parts) != 3 || parts[0] != "task" {
+		sendResponse(
+			ctx,
+			b,
+			chatID,
+			&model.BotResponse{
+				Text: "⚠️ Не удалось определить действие.",
+				Menu: model.MenuMain,
+			},
+		)
+		return
+	}
 
-// 	telegramID := callback.From.ID
+	taskID, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil || taskID <= 0 {
+		sendResponse(
+			ctx,
+			b,
+			chatID,
+			&model.BotResponse{
+				Text: "⚠️ Некорректный идентификатор задачи.",
+				Menu: model.MenuMain,
+			},
+		)
+		return
+	}
 
-// 	log.Printf(
-// 		"CALLBACK: data=%s telegram_id=%d task_id=%d action=%s",
-// 		callback.Data,
-// 		telegramID,
-// 		taskID,
-// 		parts[1],
-// 	)
+	telegramID := callback.From.ID
 
-// 	var response *model.BotResponse
+	log.Printf(
+		"CALLBACK: data=%s telegram_id=%d task_id=%d action=%s",
+		callback.Data,
+		telegramID,
+		taskID,
+		parts[1],
+	)
 
-// 	switch parts[1] {
-// 	case "done":
-// 		response, err = h.taskService.CompleteTask(
-// 			ctx,
-// 			telegramID,
-// 			taskID,
-// 		)
+	var response *model.BotResponse
 
-// 	case "cancel":
-// 		response, err = h.taskService.CancelTask(
-// 			ctx,
-// 			telegramID,
-// 			taskID,
-// 		)
+	switch parts[1] {
+	case "done":
+		response, err = h.taskService.CompleteTask(
+			ctx,
+			telegramID,
+			taskID,
+		)
 
-// 	case "reschedule":
-// 		response, err = h.taskService.StartRescheduleTask(
-// 			ctx,
-// 			telegramID,
-// 			taskID,
-// 		)
+	case "cancel":
+		response, err = h.taskService.CancelTask(
+			ctx,
+			telegramID,
+			taskID,
+		)
 
-// 	default:
-// 		response = &model.BotResponse{
-// 			Text: "⚠️ Неизвестное действие с задачей.",
-// 			Menu: model.MenuMain,
-// 		}
-// 	}
+	case "reschedule":
+		response, err = h.taskService.StartRescheduleTask(
+			ctx,
+			telegramID,
+			taskID,
+		)
 
-// 	if err != nil {
-// 		log.Printf(
-// 			"task callback error: action=%s task_id=%d: %v",
-// 			parts[1],
-// 			taskID,
-// 			err,
-// 		)
+	default:
+		response = &model.BotResponse{
+			Text: "⚠️ Неизвестное действие с задачей.",
+			Menu: model.MenuMain,
+		}
+	}
 
-// 		response = &model.BotResponse{
-// 			Text: "⚠️ Не удалось обработать действие. Попробуй ещё раз.",
-// 			Menu: model.MenuMain,
-// 		}
-// 	}
+	if err != nil {
+		log.Printf(
+			"task callback error: action=%s task_id=%d: %v",
+			parts[1],
+			taskID,
+			err,
+		)
 
-// 	sendResponse(ctx, b, chatID, response)
-// }
+		response = &model.BotResponse{
+			Text: "⚠️ Не удалось обработать действие. Попробуй ещё раз.",
+			Menu: model.MenuMain,
+		}
+	}
+
+	sendResponse(ctx, b, chatID, response)
+}
 
 func sendResponse(
 	ctx context.Context,

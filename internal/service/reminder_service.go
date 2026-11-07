@@ -2,14 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"telegram-bot/internal/model"
 	"telegram-bot/internal/repository"
-
-	"github.com/jackc/pgx/v5"
 )
 
 type ReminderService struct {
@@ -187,20 +184,6 @@ func (s *ReminderService) MarkSent(
 			message.Type,
 		)
 	}
-}
-
-func (s *ReminderService) ChangeTaskStatus(
-	ctx context.Context,
-	taskID int64,
-	status model.TaskStatus,
-) error {
-	err := s.reminders.ChangeTaskStatus(ctx, taskID, status)
-
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return err
-	}
-
-	return err
 }
 
 func reminderCategory(

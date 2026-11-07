@@ -13,23 +13,20 @@ import (
 )
 
 type MessageRouter struct {
-	userHandler     *UserHandler
-	taskHandler     *TaskHandler
-	reminderHandler *ReminderHandler
-	taskService     *service.TaskService
+	userHandler *UserHandler
+	taskHandler *TaskHandler
+	taskService *service.TaskService
 }
 
 func NewMessageRouter(
 	userHandler *UserHandler,
 	taskHandler *TaskHandler,
-	reminderHandler *ReminderHandler,
 	taskService *service.TaskService,
 ) *MessageRouter {
 	return &MessageRouter{
-		userHandler:     userHandler,
-		taskHandler:     taskHandler,
-		reminderHandler: reminderHandler,
-		taskService:     taskService,
+		userHandler: userHandler,
+		taskHandler: taskHandler,
+		taskService: taskService,
 	}
 }
 
@@ -43,12 +40,14 @@ func (r *MessageRouter) Message(
 	}
 
 	text := strings.TrimSpace(update.Message.Text)
-
-	switch text {
+	telegramID := update.Message.From.ID
+	chatID := update.Message.Chat.ID
 
 	// =========================
 	// Главное меню
 	// =========================
+
+	switch text {
 
 	case ButtonAddTask:
 		r.taskHandler.StartCreateTask(
@@ -67,14 +66,10 @@ func (r *MessageRouter) Message(
 		return
 
 	case ButtonSettings:
-		sendResponse(
+		r.userHandler.SettingsHandler(
 			ctx,
 			b,
-			update.Message.Chat.ID,
-			&model.BotResponse{
-				Text: "⚙️ Настройки пока в разработке.",
-				Menu: model.MenuMain,
-			},
+			update,
 		)
 		return
 
@@ -106,39 +101,71 @@ func (r *MessageRouter) Message(
 		)
 		return
 	}
-	// =========================
-	// Перенос выполнение задачи
-	// =========================
 
 	// =========================
-	// Создание задачи
+	// Проверка настроек
 	// =========================
 
-	activeTaskCreation, err := r.taskService.HasActiveCreation(
+	activeSettings, err := r.userHandler.HasActiveSettings(
 		ctx,
-		update.Message.From.ID,
+		telegramID,
 	)
 
 	if err != nil {
 		log.Printf(
-			"check task creation session error: %v",
+			"check settings session error: %v",
 			err,
 		)
 
 		sendResponse(
 			ctx,
 			b,
-			update.Message.Chat.ID,
+			chatID,
 			&model.BotResponse{
 				Text: "⚠️ Не удалось обработать запрос.",
 				Menu: model.MenuMain,
 			},
 		)
-
 		return
 	}
 
-	if activeTaskCreation {
+	if activeSettings {
+		r.userHandler.SettingsMessage(
+			ctx,
+			b,
+			update,
+		)
+		return
+	}
+
+	// =========================
+	// Создание / перенос задачи
+	// =========================
+
+	activeTaskSession, err := r.taskService.HasActiveTaskSession(
+		ctx,
+		telegramID,
+	)
+
+	if err != nil {
+		log.Printf(
+			"check task session error: %v",
+			err,
+		)
+
+		sendResponse(
+			ctx,
+			b,
+			chatID,
+			&model.BotResponse{
+				Text: "⚠️ Не удалось обработать запрос.",
+				Menu: model.MenuMain,
+			},
+		)
+		return
+	}
+
+	if activeTaskSession {
 		r.taskHandler.Message(
 			ctx,
 			b,

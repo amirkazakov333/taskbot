@@ -110,6 +110,28 @@ func (s *TaskService) StartCreateTask(
 	}, nil
 }
 
+func (s *TaskService) HasActiveTaskSession(
+	ctx context.Context,
+	telegramID int64,
+) (bool, error) {
+
+	session, err := s.sessions.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return session.SessionType == model.SessionTypeTaskCreation ||
+		session.SessionType == model.SessionTypeTaskReschedule, nil
+}
+
 func (s *TaskService) HasActiveCreation(
 	ctx context.Context,
 	telegramID int64,
@@ -226,8 +248,9 @@ func (s *TaskService) HandleTaskMessage(
 		return nil, err
 	}
 
-	// Этот обработчик работает  при создании задачи.
-	if session.SessionType != model.SessionTypeTaskCreation {
+	// Этот обработчик работает при создании / переносе задачи.
+	if session.SessionType != model.SessionTypeTaskCreation &&
+		session.SessionType != model.SessionTypeTaskReschedule {
 		return &model.BotResponse{
 			Text: "Сейчас у тебя выполняется другой процесс. Сначала заверши его.",
 			Menu: model.MenuMain,
@@ -290,56 +313,6 @@ func (s *TaskService) CancelTask(
 		model.TaskStatusCancelled,
 		"❌ Задача отменена.",
 	)
-}
-
-func (s *TaskService) changeTaskStatus(
-	ctx context.Context,
-	telegramID int64,
-	taskID int64,
-	status model.TaskStatus,
-	message string,
-) (*model.BotResponse, error) {
-
-	// Получаем пользователя, который нажал кнопку.
-	user, err := s.users.GetByTelegramID(
-		ctx,
-		telegramID,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Printf(
-		"CHANGE STATUS: telegram_id=%d user_id=%d task_id=%d status=%s",
-		telegramID,
-		user.ID,
-		taskID,
-		status,
-	)
-
-	// Меняем статус только у его активной задачи.
-	err = s.tasks.UpdateStatusByUserID(
-		ctx,
-		taskID,
-		user.ID,
-		status,
-	)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		return &model.BotResponse{
-			Text: "Эта задача не найдена или уже не активна.",
-			Menu: model.MenuMain,
-		}, nil
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &model.BotResponse{
-		Text: message,
-		Menu: model.MenuMain,
-	}, nil
 }
 
 func (s *TaskService) StartRescheduleTask(
@@ -433,6 +406,56 @@ func (s *TaskService) StartRescheduleTask(
 			task.Title,
 		),
 		Menu: model.MenuTaskDate,
+	}, nil
+}
+
+func (s *TaskService) changeTaskStatus(
+	ctx context.Context,
+	telegramID int64,
+	taskID int64,
+	status model.TaskStatus,
+	message string,
+) (*model.BotResponse, error) {
+
+	// Получаем пользователя, который нажал кнопку.
+	user, err := s.users.GetByTelegramID(
+		ctx,
+		telegramID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf(
+		"CHANGE STATUS: telegram_id=%d user_id=%d task_id=%d status=%s",
+		telegramID,
+		user.ID,
+		taskID,
+		status,
+	)
+
+	// Меняем статус только у его активной задачи.
+	err = s.tasks.UpdateStatusByUserID(
+		ctx,
+		taskID,
+		user.ID,
+		status,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return &model.BotResponse{
+			Text: "Эта задача не найдена или уже не активна.",
+			Menu: model.MenuMain,
+		}, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.BotResponse{
+		Text: message,
+		Menu: model.MenuMain,
 	}, nil
 }
 
@@ -682,10 +705,15 @@ func (s *TaskService) handleTime(
 	text string,
 ) (*model.BotResponse, error) {
 
-	if session.Category == nil ||
-		session.Title == nil ||
-		session.TaskDate == nil {
-		return nil, errors.New("incomplete task creation session")
+	if session.TaskDate == nil {
+		return nil, errors.New("task date is missing")
+	}
+
+	// Для создания дополнительно нужны категория и название.
+	if session.SessionType == model.SessionTypeTaskCreation {
+		if session.Category == nil || session.Title == nil {
+			return nil, errors.New("incomplete task creation session")
+		}
 	}
 
 	location := appLocation()
@@ -696,13 +724,13 @@ func (s *TaskService) handleTime(
 		menu = model.MenuTaskTimeToday
 	}
 
-	hour, minute, _ := parseTaskTime(text)
-	// if err != nil {
-	// 	return &model.BotResponse{
-	// 		Text: "Некорректное время.\n\nВыбери время с 07:00 до 24:00.",
-	// 		Menu: menu,
-	// 	}, nil
-	// }
+	hour, minute, err := parseTaskTime(text)
+	if err != nil {
+		return &model.BotResponse{
+			Text: "Некорректное время.\n\nВыбери время с 07:00 до 24:00.",
+			Menu: menu,
+		}, nil
+	}
 
 	dueAt := time.Date(
 		session.TaskDate.Year(),
@@ -720,7 +748,7 @@ func (s *TaskService) handleTime(
 		dueAt = dateOnly(*session.TaskDate).AddDate(0, 0, 1)
 	}
 
-	// Не разрешаем выбирать прошедшее или уже наступившее время.
+	// Проверяем, что выбранное время ещё не прошло.
 	if !dueAt.After(now) {
 		return &model.BotResponse{
 			Text: "Это время уже прошло. Выбери другое.",
@@ -728,6 +756,7 @@ func (s *TaskService) handleTime(
 		}, nil
 	}
 
+	// Получаем пользователя.
 	user, err := s.users.GetByTelegramID(
 		ctx,
 		session.TelegramID,
@@ -736,18 +765,120 @@ func (s *TaskService) handleTime(
 		return nil, err
 	}
 
-	task := model.Task{
-		UserID:   user.ID,
-		Category: *session.Category,
-		Title:    *session.Title,
-		Status:   model.TaskStatusTodo,
-		DueAt:    dueAt,
+	var taskTitle string
+	var successMessage string
+
+	// Здесь разделяем создание и перенос.
+	switch session.SessionType {
+
+	// СОЗДАНИЕ НОВОЙ ЗАДАЧИ
+
+	case model.SessionTypeTaskCreation:
+
+		task := model.Task{
+			UserID:   user.ID,
+			Category: *session.Category,
+			Title:    *session.Title,
+			Status:   model.TaskStatusTodo,
+			DueAt:    dueAt,
+		}
+
+		if err := s.tasks.Create(ctx, &task); err != nil {
+			return nil, err
+		}
+
+		taskTitle = *session.Title
+
+		successMessage = "✅ <b>Задача добавлена!</b>"
+
+	// ПЕРЕНОС СУЩЕСТВУЮЩЕЙ ЗАДАЧИ
+
+	case model.SessionTypeTaskReschedule:
+
+		if session.TargetTaskID == nil {
+			return nil, errors.New("target task ID is missing")
+		}
+
+		taskID := *session.TargetTaskID
+
+		// Получаем существующую задачу.
+		task, err := s.tasks.GetByIDAndUserID(
+			ctx,
+			taskID,
+			user.ID,
+		)
+
+		if errors.Is(err, pgx.ErrNoRows) {
+			if deleteErr := s.sessions.Delete(
+				ctx,
+				session.TelegramID,
+			); deleteErr != nil {
+				return nil, deleteErr
+			}
+
+			return &model.BotResponse{
+				Text: "⚠️ Задача не найдена.",
+				Menu: model.MenuMain,
+			}, nil
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		// Переносить можно только активные задачи.
+		if task.Status != model.TaskStatusTodo {
+			if deleteErr := s.sessions.Delete(
+				ctx,
+				session.TelegramID,
+			); deleteErr != nil {
+				return nil, deleteErr
+			}
+
+			return &model.BotResponse{
+				Text: "Эту задачу уже нельзя перенести.",
+				Menu: model.MenuMain,
+			}, nil
+		}
+
+		// Обновляем срок существующей задачи.
+		err = s.tasks.RescheduleByUserID(
+			ctx,
+			taskID,
+			user.ID,
+			dueAt,
+		)
+
+		if errors.Is(err, pgx.ErrNoRows) {
+			if deleteErr := s.sessions.Delete(
+				ctx,
+				session.TelegramID,
+			); deleteErr != nil {
+				return nil, deleteErr
+			}
+
+			return &model.BotResponse{
+				Text: "Задача больше не активна и не может быть перенесена.",
+				Menu: model.MenuMain,
+			}, nil
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		taskTitle = task.Title
+
+		successMessage = "🔄 <b>Срок выполнения задачи изменён!</b>"
+
+	default:
+		return nil, fmt.Errorf(
+			"unsupported session type: %q",
+			session.SessionType,
+		)
 	}
 
-	if err := s.tasks.Create(ctx, &task); err != nil {
-		return nil, err
-	}
-
+	// Удаляем сессию только после успешной операции.
 	if err := s.sessions.Delete(
 		ctx,
 		session.TelegramID,
@@ -755,32 +886,19 @@ func (s *TaskService) handleTime(
 		return nil, err
 	}
 
-	switch session.SessionType {
-
-	case model.SessionTypeTaskCreation:
-		return &model.BotResponse{
-			Text: fmt.Sprintf(
-				"✅ <b>Задача добавлена!</b>\n\n📝 %s\n📅 %s\n🕐 %s",
-				*session.Title,
-				dueAt.Format("02.01.2006"),
-				dueAt.Format("15:04"),
-			),
-			Menu: model.MenuMain,
-		}, nil
-
-	case model.SessionTypeTaskReschedule:
-		return &model.BotResponse{
-			Text: fmt.Sprintf(
-				"✅ <b>Задача добавлена!</b>\n\n📝 %s\n📅 %s\n🕐 %s",
-				*session.Title,
-				dueAt.Format("02.01.2006"),
-				dueAt.Format("15:04"),
-			),
-			Menu: model.MenuMain,
-		}, nil
-	}
-
-	return nil, err
+	return &model.BotResponse{
+		Text: fmt.Sprintf(
+			"%s\n\n"+
+				"📝 %s\n"+
+				"📅 %s\n"+
+				"🕐 %s",
+			successMessage,
+			taskTitle,
+			dueAt.Format("02.01.2006"),
+			dueAt.Format("15:04"),
+		),
+		Menu: model.MenuMain,
+	}, nil
 }
 
 func dateOnly(t time.Time) time.Time {

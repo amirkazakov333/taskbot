@@ -3,9 +3,31 @@ package model
 import "time"
 
 const (
+	SettingsChangeFirstName     = "✏️ Изменить имя"
+	SettingsChangeLastName      = "✏️ Изменить фамилию"
+	SettingsChangePreferredName = "💬 Изменить имя для обращения"
+	SettingsBack                = "↩️ Главное меню"
+	SettingsBackToMenu          = "↩️ К настройкам"
+	SettingsCancel              = "❌ Отмена"
+)
+
+const (
+	ButtonAddTask  = "➕ Добавить задачу"
+	ButtonMyTasks  = "📋 Мои задачи"
+	ButtonSettings = "⚙️ Настройки"
+)
+
+const (
 	SessionTypeRegistration   UserSessionType = "registration"
 	SessionTypeTaskCreation   UserSessionType = "task_creation"
 	SessionTypeTaskReschedule UserSessionType = "task_reschedule"
+	SessionTypeSettings       UserSessionType = "settings"
+)
+
+const (
+	UserFirstName     UserData = "first_name"
+	UserLastName      UserData = "last_name"
+	UserPreferredName UserData = "preferred_name"
 )
 
 const (
@@ -17,6 +39,9 @@ const (
 	MenuTaskFilter       MenuType = "task_filter"
 	MenuTaskTimeToday    MenuType = "task_time_today"
 	MenuTaskChangeStatus MenuType = "task_cahnge_status"
+	MenuSettings         MenuType = "settings"
+	MenuRemoveKeyboard   MenuType = "remove_keyboard"
+	MenuSettingsInput    MenuType = "settings_input"
 )
 
 const (
@@ -43,6 +68,8 @@ type TaskCategory string
 type TaskStatus string
 
 type UserSessionType string
+
+type UserData string
 
 type UserSession struct {
 	TelegramID  int64

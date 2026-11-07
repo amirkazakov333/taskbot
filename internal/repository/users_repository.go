@@ -2,17 +2,32 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"telegram-bot/internal/model"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type UserRepository interface {
-	GetByTelegramID(ctx context.Context, telegramID int64) (*model.User, error)
-	UserCreate(ctx context.Context, user model.User) error
-}
+	GetByTelegramID(
+		ctx context.Context,
+		telegramID int64,
+	) (*model.User, error)
 
+	UserCreate(
+		ctx context.Context,
+		user model.User,
+	) error
+
+	UpdateUserData(
+		ctx context.Context,
+		telegramID int64,
+		field model.UserData,
+		value string,
+	) error
+}
 type UserPostgresRepository struct {
 	pool *pgxpool.Pool
 }
@@ -74,4 +89,56 @@ func (r *UserPostgresRepository) UserCreate(ctx context.Context, user model.User
 	)
 
 	return err
+}
+
+func (r *UserPostgresRepository) UpdateUserData(
+	ctx context.Context,
+	telegramID int64,
+	field model.UserData,
+	value string,
+) error {
+
+	var query string
+
+	switch field {
+	case model.UserFirstName:
+		query = `
+            UPDATE users
+            SET first_name = $2
+            WHERE telegram_id = $1
+        `
+
+	case model.UserLastName:
+		query = `
+            UPDATE users
+            SET last_name = $2
+            WHERE telegram_id = $1
+        `
+
+	case model.UserPreferredName:
+		query = `
+            UPDATE users
+            SET preferred_name = $2
+            WHERE telegram_id = $1
+        `
+
+	default:
+		return fmt.Errorf("unsupported user data field: %q", field)
+	}
+
+	tag, err := r.pool.Exec(
+		ctx,
+		query,
+		telegramID,
+		value,
+	)
+	if err != nil {
+		return err
+	}
+
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+
+	return nil
 }
